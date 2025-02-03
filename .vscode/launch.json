@@ -1,0 +1,34 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "gdb",
+            "request": "launch",
+            "name": "HvC",
+            "target": "./HvC/build/HvC",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "hvc",
+            "valuesFormatting": "parseText"
+        },
+        {
+            "type": "gdb",
+            "request": "launch",
+            "name": "Sync",
+            "target": "sync-alass/bin/sync",
+            "cwd": "${workspaceRoot}",
+            "justMyCode": false,
+            "valuesFormatting": "parseText"
+        },
+        {
+         "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        }
+    ]
+}

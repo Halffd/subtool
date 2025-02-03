@@ -1,0 +1,11 @@
+[package]
+name = "submerger"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4.39"
+clap = "4.5.27"
+encoding_rs = "0.8.35"
+encoding_rs_io = "0.1.7"
+regex = "1.11.1"

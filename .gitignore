@@ -1,0 +1,15 @@
+build
+*.srt
+*.ass
+*.mp3
+*.vtt
+*.sup
+*.mkv
+*.mp4
+*.log
+conf/*
+conf
+cfg
+config
+log
+__pycache__
