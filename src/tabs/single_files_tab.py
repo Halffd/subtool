@@ -3,10 +3,13 @@
 import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QFileDialog, QProgressBar, QMessageBox, QListWidget
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+
+from src.utils.subtitle_merger import SubtitleMerger
+from .base_tab import BaseTab
 
 class MergeWorker(QThread):
     """Worker thread for merging subtitle files."""
@@ -14,6 +17,7 @@ class MergeWorker(QThread):
     progress = pyqtSignal(int)
     finished = pyqtSignal()
     error = pyqtSignal(str)
+    log = pyqtSignal(str)
     
     def __init__(self, input_files, output_file):
         super().__init__()
@@ -24,13 +28,26 @@ class MergeWorker(QThread):
     def run(self):
         """Run the merge operation."""
         try:
-            # TODO: Implement actual subtitle merging logic here
-            # For now, just simulate progress
-            for i in range(101):
+            merger = SubtitleMerger()
+            
+            # Add files and update progress
+            total_files = len(self.input_files)
+            for i, file_path in enumerate(self.input_files):
                 if self._stop:
                     return
-                self.progress.emit(i)
-                self.msleep(50)  # Simulate work
+                
+                self.log.emit(f"Processing file: {Path(file_path).name}")
+                merger.add_file(file_path)
+                self.progress.emit(int((i + 1) / total_files * 50))  # First 50% for loading
+            
+            if self._stop:
+                return
+            
+            # Merge files
+            self.log.emit("Merging subtitles...")
+            merger.merge(self.output_file)
+            self.progress.emit(100)
+            self.log.emit(f"Merged subtitles saved to: {Path(self.output_file).name}")
             
             self.finished.emit()
         except Exception as e:
@@ -40,23 +57,21 @@ class MergeWorker(QThread):
         """Stop the merge operation."""
         self._stop = True
 
-class SingleFilesTab(QWidget):
+class SingleFilesTab(BaseTab):
     """Tab for merging individual subtitle files."""
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__("single_files", parent)
         self.input_files = []
         self.merge_worker = None
         self.init_ui()
     
     def init_ui(self):
         """Initialize the user interface."""
-        layout = QVBoxLayout()
-        
         # File list
         self.file_list = QListWidget()
-        layout.addWidget(QLabel("Selected Files:"))
-        layout.addWidget(self.file_list)
+        self.layout.addWidget(QLabel("Selected Files:"))
+        self.layout.addWidget(self.file_list)
         
         # Buttons
         btn_layout = QHBoxLayout()
@@ -75,7 +90,7 @@ class SingleFilesTab(QWidget):
         self.clear_btn.setEnabled(False)
         btn_layout.addWidget(self.clear_btn)
         
-        layout.addLayout(btn_layout)
+        self.layout.addLayout(btn_layout)
         
         # Merge section
         merge_layout = QHBoxLayout()
@@ -89,12 +104,10 @@ class SingleFilesTab(QWidget):
         self.progress_bar.setVisible(False)
         merge_layout.addWidget(self.progress_bar)
         
-        layout.addLayout(merge_layout)
+        self.layout.addLayout(merge_layout)
         
         # Connect file list selection signal
         self.file_list.itemSelectionChanged.connect(self.update_button_states)
-        
-        self.setLayout(layout)
     
     def add_files(self):
         """Open file dialog to add subtitle files."""
@@ -110,6 +123,7 @@ class SingleFilesTab(QWidget):
             self.file_list.clear()
             self.file_list.addItems([Path(f).name for f in self.input_files])
             self.update_button_states()
+            self.logger.info(f"Added {len(files)} file(s)")
     
     def remove_selected(self):
         """Remove selected files from the list."""
@@ -118,12 +132,15 @@ class SingleFilesTab(QWidget):
             self.input_files.pop(row)
             self.file_list.takeItem(row)
         self.update_button_states()
+        self.logger.info(f"Removed {len(selected_rows)} file(s)")
     
     def clear_files(self):
         """Clear all files from the list."""
+        count = len(self.input_files)
         self.input_files.clear()
         self.file_list.clear()
         self.update_button_states()
+        self.logger.info(f"Cleared {count} file(s)")
     
     def update_button_states(self):
         """Update button states based on current selection."""
@@ -160,7 +177,10 @@ class SingleFilesTab(QWidget):
         self.merge_worker.progress.connect(self.update_progress)
         self.merge_worker.finished.connect(self.merge_finished)
         self.merge_worker.error.connect(self.merge_error)
+        self.merge_worker.log.connect(self.logger.info)
         self.merge_worker.start()
+        
+        self.logger.info("Starting merge operation...")
     
     def set_ui_enabled(self, enabled):
         """Enable or disable UI elements."""
@@ -178,6 +198,7 @@ class SingleFilesTab(QWidget):
         """Handle merge completion."""
         self.set_ui_enabled(True)
         self.progress_bar.setVisible(False)
+        self.logger.info("Merge operation completed successfully!")
         QMessageBox.information(self, "Success", "Subtitles merged successfully!")
         self.merge_worker = None
     
@@ -185,5 +206,6 @@ class SingleFilesTab(QWidget):
         """Handle merge error."""
         self.set_ui_enabled(True)
         self.progress_bar.setVisible(False)
+        self.logger.error(f"Merge operation failed: {error_msg}")
         QMessageBox.critical(self, "Error", f"Failed to merge subtitles: {error_msg}")
         self.merge_worker = None 

@@ -3,10 +3,13 @@
 import os
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
+    QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QFileDialog, QProgressBar, QMessageBox, QLineEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
+
+from src.utils.subtitle_merger import merge_directory
+from .base_tab import BaseTab
 
 class DirectoryMergeWorker(QThread):
     """Worker thread for merging subtitle files in a directory."""
@@ -14,6 +17,7 @@ class DirectoryMergeWorker(QThread):
     progress = pyqtSignal(int)
     finished = pyqtSignal()
     error = pyqtSignal(str)
+    log = pyqtSignal(str)
     
     def __init__(self, input_dir, output_dir, pattern):
         super().__init__()
@@ -25,15 +29,18 @@ class DirectoryMergeWorker(QThread):
     def run(self):
         """Run the merge operation."""
         try:
-            # TODO: Implement actual directory-based subtitle merging logic here
-            # For now, just simulate progress
-            for i in range(101):
-                if self._stop:
-                    return
-                self.progress.emit(i)
-                self.msleep(50)  # Simulate work
+            if self._stop:
+                return
             
-            self.finished.emit()
+            # Start directory merge
+            self.progress.emit(10)
+            self.log.emit(f"Starting directory merge with pattern: {self.pattern}")
+            merge_directory(self.input_dir, self.output_dir, self.pattern)
+            
+            if not self._stop:
+                self.progress.emit(100)
+                self.log.emit("Directory merge completed successfully")
+                self.finished.emit()
         except Exception as e:
             self.error.emit(str(e))
     
@@ -41,11 +48,11 @@ class DirectoryMergeWorker(QThread):
         """Stop the merge operation."""
         self._stop = True
 
-class DirectoryTab(QWidget):
+class DirectoryTab(BaseTab):
     """Tab for merging subtitle files in a directory."""
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__("directory", parent)
         self.input_dir = None
         self.output_dir = None
         self.merge_worker = None
@@ -53,8 +60,6 @@ class DirectoryTab(QWidget):
     
     def init_ui(self):
         """Initialize the user interface."""
-        layout = QVBoxLayout()
-        
         # Input directory section
         input_layout = QHBoxLayout()
         self.input_dir_label = QLabel("No input directory selected")
@@ -64,7 +69,7 @@ class DirectoryTab(QWidget):
         self.select_input_btn.clicked.connect(self.select_input_directory)
         input_layout.addWidget(self.select_input_btn)
         
-        layout.addLayout(input_layout)
+        self.layout.addLayout(input_layout)
         
         # Pattern section
         pattern_layout = QHBoxLayout()
@@ -74,7 +79,7 @@ class DirectoryTab(QWidget):
         self.pattern_edit.setPlaceholderText("e.g., *_en.srt, *_fr.srt")
         pattern_layout.addWidget(self.pattern_edit)
         
-        layout.addLayout(pattern_layout)
+        self.layout.addLayout(pattern_layout)
         
         # Output directory section
         output_layout = QHBoxLayout()
@@ -85,7 +90,7 @@ class DirectoryTab(QWidget):
         self.select_output_btn.clicked.connect(self.select_output_directory)
         output_layout.addWidget(self.select_output_btn)
         
-        layout.addLayout(output_layout)
+        self.layout.addLayout(output_layout)
         
         # Merge section
         merge_layout = QHBoxLayout()
@@ -99,9 +104,7 @@ class DirectoryTab(QWidget):
         self.progress_bar.setVisible(False)
         merge_layout.addWidget(self.progress_bar)
         
-        layout.addLayout(merge_layout)
-        
-        self.setLayout(layout)
+        self.layout.addLayout(merge_layout)
     
     def select_input_directory(self):
         """Open directory dialog to select input directory."""
@@ -115,6 +118,7 @@ class DirectoryTab(QWidget):
             self.input_dir = directory
             self.input_dir_label.setText(f"Input: {Path(directory).name}")
             self.update_merge_button()
+            self.logger.info(f"Selected input directory: {directory}")
     
     def select_output_directory(self):
         """Open directory dialog to select output directory."""
@@ -128,6 +132,7 @@ class DirectoryTab(QWidget):
             self.output_dir = directory
             self.output_dir_label.setText(f"Output: {Path(directory).name}")
             self.update_merge_button()
+            self.logger.info(f"Selected output directory: {directory}")
     
     def update_merge_button(self):
         """Update merge button state based on current selection."""
@@ -162,7 +167,10 @@ class DirectoryTab(QWidget):
         self.merge_worker.progress.connect(self.update_progress)
         self.merge_worker.finished.connect(self.merge_finished)
         self.merge_worker.error.connect(self.merge_error)
+        self.merge_worker.log.connect(self.logger.info)
         self.merge_worker.start()
+        
+        self.logger.info("Starting directory merge operation...")
     
     def update_progress(self, value):
         """Update progress bar value."""
@@ -172,6 +180,7 @@ class DirectoryTab(QWidget):
         """Handle merge completion."""
         self.set_ui_enabled(True)
         self.progress_bar.setVisible(False)
+        self.logger.info("Directory merge completed successfully!")
         QMessageBox.information(self, "Success", "Directory subtitles merged successfully!")
         self.merge_worker = None
     
@@ -179,5 +188,6 @@ class DirectoryTab(QWidget):
         """Handle merge error."""
         self.set_ui_enabled(True)
         self.progress_bar.setVisible(False)
+        self.logger.error(f"Directory merge failed: {error_msg}")
         QMessageBox.critical(self, "Error", f"Failed to merge subtitles: {error_msg}")
         self.merge_worker = None 

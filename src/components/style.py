@@ -1,5 +1,16 @@
 """Style definitions for the application."""
 
+# Color definitions
+COLORS = {
+    'WHITE': '#FFFFFF',
+    'YELLOW': '#FFFF00',
+    'GREEN': '#00FF00',
+    'CYAN': '#00FFFF',
+    'BLUE': '#0000FF',
+    'MAGENTA': '#FF00FF',
+    'RED': '#FF0000'
+}
+
 DARK_THEME = """
 QMainWindow, QWidget {
     background-color: #2b2b2b;
@@ -115,15 +126,4 @@ QScrollBar::handle:horizontal {
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
 }
-"""
-
-# Color definitions
-COLORS = {
-    'WHITE': '#FFFFFF',
-    'YELLOW': '#FFFF00',
-    'GREEN': '#00FF00',
-    'CYAN': '#00FFFF',
-    'BLUE': '#0000FF',
-    'MAGENTA': '#FF00FF',
-    'RED': '#FF0000'
-} 
+""" 

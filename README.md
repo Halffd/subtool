@@ -1,4 +1,4 @@
-# Subtitle Merger
+# SubTool
 
 A PyQt6-based GUI application for merging multiple SRT subtitle files into a single file. The application supports both individual file merging and directory-based batch merging.
 
@@ -22,7 +22,7 @@ A PyQt6-based GUI application for merging multiple SRT subtitle files into a sin
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/subtitle-merger.git
+git clone https://github.com/Halffd/subtitle-merger.git
 cd subtitle-merger
 ```
 

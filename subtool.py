@@ -34,8 +34,8 @@ class SubtitleMergerGUI(QMainWindow):
         main_layout.addWidget(tab_widget)
         
         # Add tabs
-        self.single_files_tab = SingleFilesTab()
-        self.directory_tab = DirectoryTab()
+        self.single_files_tab = SingleFilesTab(self)
+        self.directory_tab = DirectoryTab(self)
         
         tab_widget.addTab(self.single_files_tab, "Single Files")
         tab_widget.addTab(self.directory_tab, "Directory")
