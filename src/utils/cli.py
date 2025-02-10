@@ -1,7 +1,7 @@
 #!/bin/python
 import os
 import argparse
-from main import Merger
+from src.utils.merger import Merger
 
 def detect_os_codec():
     """

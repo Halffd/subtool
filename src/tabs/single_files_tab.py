@@ -1,211 +1,264 @@
-"""Single Files Tab - For merging individual subtitle files."""
-
 import os
+import shutil
+import subprocess
 from pathlib import Path
-from PyQt6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QFileDialog, QProgressBar, QMessageBox, QListWidget
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QPushButton,
+    QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QSlider,
+    QWidget, QGridLayout, QFileDialog
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-
-from src.utils.subtitle_merger import SubtitleMerger
+from PyQt5.QtCore import Qt
 from .base_tab import BaseTab
-
-class MergeWorker(QThread):
-    """Worker thread for merging subtitle files."""
-    
-    progress = pyqtSignal(int)
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-    log = pyqtSignal(str)
-    
-    def __init__(self, input_files, output_file):
-        super().__init__()
-        self.input_files = input_files
-        self.output_file = output_file
-        self._stop = False
-    
-    def run(self):
-        """Run the merge operation."""
-        try:
-            merger = SubtitleMerger()
-            
-            # Add files and update progress
-            total_files = len(self.input_files)
-            for i, file_path in enumerate(self.input_files):
-                if self._stop:
-                    return
-                
-                self.log.emit(f"Processing file: {Path(file_path).name}")
-                merger.add_file(file_path)
-                self.progress.emit(int((i + 1) / total_files * 50))  # First 50% for loading
-            
-            if self._stop:
-                return
-            
-            # Merge files
-            self.log.emit("Merging subtitles...")
-            merger.merge(self.output_file)
-            self.progress.emit(100)
-            self.log.emit(f"Merged subtitles saved to: {Path(self.output_file).name}")
-            
-            self.finished.emit()
-        except Exception as e:
-            self.error.emit(str(e))
-    
-    def stop(self):
-        """Stop the merge operation."""
-        self._stop = True
+from ..utils.merger import Merger, WHITE
 
 class SingleFilesTab(BaseTab):
-    """Tab for merging individual subtitle files."""
+    """Tab for processing single files."""
     
     def __init__(self, parent=None):
-        super().__init__("single_files", parent)
-        self.input_files = []
-        self.merge_worker = None
-        self.init_ui()
-    
-    def init_ui(self):
-        """Initialize the user interface."""
-        # File list
-        self.file_list = QListWidget()
-        self.layout.addWidget(QLabel("Selected Files:"))
-        self.layout.addWidget(self.file_list)
+        super().__init__(parent)
+        self.alass_path = shutil.which('alass') or '/usr/bin/alass'
         
-        # Buttons
-        btn_layout = QHBoxLayout()
+    def setup_ui(self):
+        """Setup specific UI for single files tab."""
+        super().setup_ui()
         
-        self.add_btn = QPushButton("Add Files")
-        self.add_btn.clicked.connect(self.add_files)
-        btn_layout.addWidget(self.add_btn)
+        main_layout = QHBoxLayout()  # Use horizontal layout for main container
+        left_panel = QVBoxLayout()
+        right_panel = QVBoxLayout()
         
-        self.remove_btn = QPushButton("Remove Selected")
-        self.remove_btn.clicked.connect(self.remove_selected)
-        self.remove_btn.setEnabled(False)
-        btn_layout.addWidget(self.remove_btn)
+        # File selection group (left panel)
+        file_group = QGroupBox("Input Files")
+        file_layout = QVBoxLayout()
+        file_layout.setSpacing(2)
         
-        self.clear_btn = QPushButton("Clear All")
-        self.clear_btn.clicked.connect(self.clear_files)
-        self.clear_btn.setEnabled(False)
-        btn_layout.addWidget(self.clear_btn)
+        # First subtitle
+        sub1_layout = QHBoxLayout()
+        self.sub1_entry = QLineEdit()
+        browse_sub1_button = QPushButton("Browse")
+        browse_sub1_button.clicked.connect(lambda: self.browse_file(self.sub1_entry, "Select First Subtitle"))
+        sub1_layout.addWidget(QLabel("Sub 1:"))
+        sub1_layout.addWidget(self.sub1_entry)
+        sub1_layout.addWidget(browse_sub1_button)
         
-        self.layout.addLayout(btn_layout)
+        # Second subtitle
+        sub2_layout = QHBoxLayout()
+        self.sub2_entry = QLineEdit()
+        browse_sub2_button = QPushButton("Browse")
+        browse_sub2_button.clicked.connect(lambda: self.browse_file(self.sub2_entry, "Select Second Subtitle"))
+        sub2_layout.addWidget(QLabel("Sub 2:"))
+        sub2_layout.addWidget(self.sub2_entry)
+        sub2_layout.addWidget(browse_sub2_button)
         
-        # Merge section
-        merge_layout = QHBoxLayout()
+        file_layout.addLayout(sub1_layout)
+        file_layout.addLayout(sub2_layout)
+        file_group.setLayout(file_layout)
+        left_panel.addWidget(file_group)
+
+        # Basic sync controls (left panel)
+        sync_group = QGroupBox("Basic Sync")
+        sync_layout = QVBoxLayout()
+        sync_layout.setSpacing(2)
+
+        # Manual sync controls for both subtitles in a grid
+        sync_grid = QGridLayout()
+        sync_grid.setSpacing(2)
         
-        self.merge_btn = QPushButton("Merge Subtitles")
-        self.merge_btn.clicked.connect(self.start_merge)
-        self.merge_btn.setEnabled(False)
-        merge_layout.addWidget(self.merge_btn)
+        # Sub 1 sync
+        sync_grid.addWidget(QLabel("Sub 1:"), 0, 0)
+        self.sub1_sync_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sub1_sync_slider.setMinimum(-10000)
+        self.sub1_sync_slider.setMaximum(10000)
+        self.sub1_sync_spinbox = QSpinBox()
+        self.sub1_sync_spinbox.setMinimum(-10000)
+        self.sub1_sync_spinbox.setMaximum(10000)
+        self.sub1_sync_spinbox.setSuffix(" ms")
+        sync_grid.addWidget(self.sub1_sync_slider, 0, 1)
+        sync_grid.addWidget(self.sub1_sync_spinbox, 0, 2)
         
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        merge_layout.addWidget(self.progress_bar)
+        # Sub 2 sync
+        sync_grid.addWidget(QLabel("Sub 2:"), 1, 0)
+        self.sub2_sync_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sub2_sync_slider.setMinimum(-10000)
+        self.sub2_sync_slider.setMaximum(10000)
+        self.sub2_sync_spinbox = QSpinBox()
+        self.sub2_sync_spinbox.setMinimum(-10000)
+        self.sub2_sync_spinbox.setMaximum(10000)
+        self.sub2_sync_spinbox.setSuffix(" ms")
+        sync_grid.addWidget(self.sub2_sync_slider, 1, 1)
+        sync_grid.addWidget(self.sub2_sync_spinbox, 1, 2)
         
-        self.layout.addLayout(merge_layout)
+        sync_layout.addLayout(sync_grid)
+        sync_group.setLayout(sync_layout)
+        left_panel.addWidget(sync_group)
+
+        # ALASS settings (right panel)
+        alass_group = QGroupBox("ALASS Settings")
+        alass_layout = QVBoxLayout()
+        alass_layout.setSpacing(2)
+
+        # Enable ALASS checkbox
+        self.use_alass = QCheckBox("Enable ALASS Auto-sync")
+        self.use_alass.setChecked(self.settings.get('use_alass', False))
+        alass_layout.addWidget(self.use_alass)
+
+        # Disable FPS guessing checkbox
+        self.disable_fps_guessing = QCheckBox("Disable FPS Guessing")
+        self.disable_fps_guessing.setChecked(self.settings.get('disable_fps_guessing', False))
+        self.disable_fps_guessing.setToolTip("Disable automatic FPS detection")
+        alass_layout.addWidget(self.disable_fps_guessing)
+
+        # ALASS parameters grid
+        params_grid = QGridLayout()
+        params_grid.setSpacing(2)
+
+        # Interval
+        params_grid.addWidget(QLabel("Interval:"), 0, 0)
+        self.alass_interval = QSpinBox()
+        self.alass_interval.setRange(0, 10000)
+        self.alass_interval.setValue(self.settings.get('alass_interval', 100))
+        self.alass_interval.setSuffix(" ms")
+        params_grid.addWidget(self.alass_interval, 0, 1)
+
+        # Split penalty
+        params_grid.addWidget(QLabel("Split Penalty:"), 1, 0)
+        self.alass_split_penalty = QDoubleSpinBox()
+        self.alass_split_penalty.setRange(0, 1000)
+        self.alass_split_penalty.setValue(self.settings.get('alass_split_penalty', 10))
+        self.alass_split_penalty.setSingleStep(0.1)
+        params_grid.addWidget(self.alass_split_penalty, 1, 1)
+
+        # FPS settings
+        params_grid.addWidget(QLabel("Sub FPS:"), 2, 0)
+        self.alass_sub_fps = QDoubleSpinBox()
+        self.alass_sub_fps.setRange(0, 120)
+        self.alass_sub_fps.setValue(self.settings.get('alass_sub_fps', 23.976))
+        self.alass_sub_fps.setSingleStep(0.001)
+        params_grid.addWidget(self.alass_sub_fps, 2, 1)
+
+        params_grid.addWidget(QLabel("Ref FPS:"), 3, 0)
+        self.alass_ref_fps = QDoubleSpinBox()
+        self.alass_ref_fps.setRange(0, 120)
+        self.alass_ref_fps.setValue(self.settings.get('alass_ref_fps', 23.976))
+        self.alass_ref_fps.setSingleStep(0.001)
+        params_grid.addWidget(self.alass_ref_fps, 3, 1)
+
+        alass_layout.addLayout(params_grid)
+        alass_group.setLayout(alass_layout)
+        right_panel.addWidget(alass_group)
+
+        # Add panels to main layout
+        main_layout.addLayout(left_panel, stretch=1)
+        main_layout.addLayout(right_panel, stretch=1)
         
-        # Connect file list selection signal
-        self.file_list.itemSelectionChanged.connect(self.update_button_states)
-    
-    def add_files(self):
-        """Open file dialog to add subtitle files."""
-        files, _ = QFileDialog.getOpenFileNames(
-            self,
-            "Select Subtitle Files",
-            str(Path.home()),
-            "Subtitle Files (*.srt);;All Files (*.*)"
+        # Merge button at the bottom
+        self.merge_button = QPushButton("Merge Subtitles")
+        self.merge_button.clicked.connect(self.merge_subtitles)
+        self.merge_button.setMinimumHeight(30)
+        
+        # Final layout assembly
+        container = QWidget()
+        container_layout = QVBoxLayout()
+        container_layout.addLayout(main_layout)
+        container_layout.addWidget(self.merge_button)
+        container.setLayout(container_layout)
+        self.layout.insertWidget(0, container)
+
+        # Connect sync control signals
+        self.sub1_sync_slider.valueChanged.connect(self.sub1_sync_spinbox.setValue)
+        self.sub1_sync_spinbox.valueChanged.connect(self.sub1_sync_slider.setValue)
+        self.sub2_sync_slider.valueChanged.connect(self.sub2_sync_spinbox.setValue)
+        self.sub2_sync_spinbox.valueChanged.connect(self.sub2_sync_slider.setValue)
+
+    def sync_subtitle_with_alass(self, video_path: str, subtitle_path: str) -> str:
+        """Synchronize subtitle with ALASS using the video as reference."""
+        try:
+            if not os.path.exists(self.alass_path):
+                self.logger.error(f"ALASS not found at {self.alass_path}")
+                return subtitle_path
+
+            # Create temporary file for synced subtitle
+            temp_dir = Path(subtitle_path).parent
+            synced_path = temp_dir / f"synced_{Path(subtitle_path).name}"
+
+            # Build ALASS command with parameters
+            cmd = [
+                self.alass_path,
+                "--interval", str(self.alass_interval.value()),
+                "--split-penalty", str(self.alass_split_penalty.value()),
+                "--sub-fps-inc", str(self.alass_sub_fps.value()),
+                "--sub-fps-ref", str(self.alass_ref_fps.value())
+            ]
+
+            # Add disable-fps-guessing if checked
+            if self.disable_fps_guessing.isChecked():
+                cmd.append("--disable-fps-guessing")
+
+            # Add input/output files
+            cmd.extend([video_path, subtitle_path, str(synced_path)])
+            
+            self.logger.debug(f"Running ALASS command: {' '.join(cmd)}")
+            process = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                self.logger.error(f"ALASS sync failed: {process.stderr}")
+                return subtitle_path
+                
+            self.logger.info(f"ALASS sync successful, output saved to {synced_path}")
+            return str(synced_path)
+            
+        except Exception as e:
+            self.logger.error(f"Error during ALASS sync: {e}")
+            return subtitle_path
+
+    def merge_subtitles(self):
+        """Merge the selected subtitle files."""
+        try:
+            sub1_file = self.sub1_entry.text()
+            sub2_file = self.sub2_entry.text()
+            
+            if not all([sub1_file, sub2_file]):
+                self.logger.error("Please select both subtitle files")
+                return
+            
+            # Create output path
+            output_path = Path(sub1_file).parent
+            base_name = Path(sub1_file).stem
+            
+            # Create merger instance
+            merger = Merger(
+                output_path=str(output_path),
+                output_name=f'{base_name}_merged.srt',
+                output_encoding=self.codec_combo.currentText()
+            )
+            
+            # Add first subtitle with color, size and sync delay
+            merger.add(
+                sub1_file,
+                codec=self.codec_combo.currentText(),
+                color=self.color_combo.currentText(),  # Already in hex format
+                size=self.sub1_font_slider.value(),
+                time_offset=self.sub1_sync_spinbox.value()
+            )
+            
+            # Add second subtitle with size and sync delay
+            merger.add(
+                sub2_file,
+                codec=self.codec_combo.currentText(),
+                color=WHITE,  # Use constant from merger.py
+                size=self.sub2_font_slider.value(),
+                time_offset=self.sub2_sync_spinbox.value()
+            )
+            
+            merger.merge()
+            self.logger.info(f"Successfully merged subtitles to: {output_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Error during merge operation: {e}")
+
+    def browse_file(self, entry: QLineEdit, title: str):
+        """Browse for a subtitle file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, title, "", "Subtitle Files (*.srt);;All Files (*)"
         )
-        
-        if files:
-            self.input_files.extend(files)
-            self.file_list.clear()
-            self.file_list.addItems([Path(f).name for f in self.input_files])
-            self.update_button_states()
-            self.logger.info(f"Added {len(files)} file(s)")
-    
-    def remove_selected(self):
-        """Remove selected files from the list."""
-        selected_rows = [item.row() for item in self.file_list.selectedItems()]
-        for row in sorted(selected_rows, reverse=True):
-            self.input_files.pop(row)
-            self.file_list.takeItem(row)
-        self.update_button_states()
-        self.logger.info(f"Removed {len(selected_rows)} file(s)")
-    
-    def clear_files(self):
-        """Clear all files from the list."""
-        count = len(self.input_files)
-        self.input_files.clear()
-        self.file_list.clear()
-        self.update_button_states()
-        self.logger.info(f"Cleared {count} file(s)")
-    
-    def update_button_states(self):
-        """Update button states based on current selection."""
-        has_files = bool(self.input_files)
-        has_selection = bool(self.file_list.selectedItems())
-        
-        self.remove_btn.setEnabled(has_selection)
-        self.clear_btn.setEnabled(has_files)
-        self.merge_btn.setEnabled(has_files and len(self.input_files) > 1)
-    
-    def start_merge(self):
-        """Start the merge operation."""
-        output_file, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Merged Subtitle",
-            str(Path.home()),
-            "Subtitle File (*.srt)"
-        )
-        
-        if not output_file:
-            return
-        
-        # Ensure .srt extension
-        if not output_file.lower().endswith('.srt'):
-            output_file += '.srt'
-        
-        # Disable UI elements
-        self.set_ui_enabled(False)
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setValue(0)
-        
-        # Create and start worker thread
-        self.merge_worker = MergeWorker(self.input_files, output_file)
-        self.merge_worker.progress.connect(self.update_progress)
-        self.merge_worker.finished.connect(self.merge_finished)
-        self.merge_worker.error.connect(self.merge_error)
-        self.merge_worker.log.connect(self.logger.info)
-        self.merge_worker.start()
-        
-        self.logger.info("Starting merge operation...")
-    
-    def set_ui_enabled(self, enabled):
-        """Enable or disable UI elements."""
-        self.add_btn.setEnabled(enabled)
-        self.remove_btn.setEnabled(enabled and bool(self.file_list.selectedItems()))
-        self.clear_btn.setEnabled(enabled and bool(self.input_files))
-        self.merge_btn.setEnabled(enabled and len(self.input_files) > 1)
-        self.file_list.setEnabled(enabled)
-    
-    def update_progress(self, value):
-        """Update progress bar value."""
-        self.progress_bar.setValue(value)
-    
-    def merge_finished(self):
-        """Handle merge completion."""
-        self.set_ui_enabled(True)
-        self.progress_bar.setVisible(False)
-        self.logger.info("Merge operation completed successfully!")
-        QMessageBox.information(self, "Success", "Subtitles merged successfully!")
-        self.merge_worker = None
-    
-    def merge_error(self, error_msg):
-        """Handle merge error."""
-        self.set_ui_enabled(True)
-        self.progress_bar.setVisible(False)
-        self.logger.error(f"Merge operation failed: {error_msg}")
-        QMessageBox.critical(self, "Error", f"Failed to merge subtitles: {error_msg}")
-        self.merge_worker = None 
+        if file_path:
+            entry.setText(file_path)
