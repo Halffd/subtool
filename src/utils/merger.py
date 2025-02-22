@@ -63,7 +63,23 @@ class Merger():
         """
         return '{\\an8}' + subtitle
 
-    def _split_dialogs(self, dialogs, subtitle, color=None, top=False):
+    def _set_subtitle_style(self, subtitle, color=None, size=None):
+        """
+        Apply style (color and size) to subtitle text
+        """
+        styled_text = subtitle
+        
+        # Add font size if specified
+        if size:
+            styled_text = f'{{\\fs{size}}}{styled_text}'
+        
+        # Add color if specified
+        if color:
+            styled_text = f'<font color="{color}">{styled_text}</font>'
+        
+        return styled_text
+
+    def _split_dialogs(self, dialogs, subtitle, color=None, size=None, top=False):
         for dialog in dialogs:
             if dialog.startswith('\r\n'):
                 dialog = dialog.replace('\r\n', '', 1)
@@ -87,11 +103,14 @@ class Merger():
                 text += t + '\n'
             if text == '' or text == '\n':
                 continue
-            text = self._set_subtitle_color(text, color)
+            
+            # Apply style (color and size) to text
+            text = self._set_subtitle_style(text, color, size)
+            
             if top is True:
                 text = self._put_subtitle_top(text)
             text_and_time = '%s\n%s\n' % (time, text)
-            # Previuos dialog for same timestamp
+            # Previous dialog for same timestamp
             prev_dialog_for_same_timestamp = subtitle['dialogs'][timestamp] = subtitle['dialogs'].get(
                 timestamp, '')
             prev_dialog_without_timestamp = re.sub(
@@ -111,11 +130,23 @@ class Merger():
                   (repr(text), codec, e))
             return b'An error has been occured in encoing by specifed `output_encoding`'
 
-    def add(self, subtitle_address, codec="utf-8", color=WHITE, top=False, size=12):
+    def add(self, subtitle_address, codec="utf-8", color=WHITE, size=None, top=False, time_offset=0):
+        """
+        Add a subtitle file to be merged
+        
+        Args:
+            subtitle_address (str): Path to subtitle file
+            codec (str): Character encoding of the subtitle file
+            color (str): Hex color code for the subtitle text
+            size (int): Font size in pixels
+            top (bool): Whether to position subtitle at top of screen
+            time_offset (int): Time offset in milliseconds
+        """
         subtitle = {
             'address': subtitle_address,
             'codec': codec,
             'color': color,
+            'size': size,
             'dialogs': {}
         }
         with open(subtitle_address, 'r') as file:
@@ -123,7 +154,7 @@ class Merger():
             dialogs = re.split('\r\n\r|\n\n', data)
             subtitle['data'] = data
             subtitle['raw_dialogs'] = dialogs
-            self._split_dialogs(dialogs, subtitle, color, top)
+            self._split_dialogs(dialogs, subtitle, color, size, top)
             self.subtitles.append(subtitle)
 
     def get_output_path(self):

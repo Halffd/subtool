@@ -2,6 +2,7 @@
 import sys
 from pathlib import Path
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTabWidget
+from PyQt5.QtCore import Qt
 
 # Add project root to Python path when run directly
 if __name__ == "__main__":
@@ -15,6 +16,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Subtitle Merger")
+        
+        # Set window attributes for dark title bar (platform specific)
+        if sys.platform == "win32":
+            # Windows specific dark title bar
+            self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        elif sys.platform == "darwin":
+            # macOS specific dark title bar
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            self.setUnifiedTitleAndToolBarOnMac(True)
         
         # Create tab widget
         self.tabs = QTabWidget()
@@ -32,6 +43,9 @@ class MainWindow(QMainWindow):
 def main():
     # Create the Qt Application
     app = QApplication(sys.argv)
+    
+    # Force the style to be the same on all OSs:
+    app.setStyle("Fusion")
     
     # Create and show the main window
     window = MainWindow()

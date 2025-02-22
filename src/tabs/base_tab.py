@@ -33,80 +33,171 @@ class BaseTab(QWidget):
         # Load settings before UI setup
         self.settings = self.load_settings()
         
-        # Define default style
+        # Define default style - update to include window borders and title bar
         self.default_style = """
-            QWidget {
+            /* Main window and all widgets */
+            QMainWindow, QWidget {
                 background-color: #1a1a2e;
                 color: #e0e0e0;
                 font-size: 11px;
+                border: none;
             }
+            
+            /* Title bar and window frame */
+            QMainWindow::title {
+                background-color: #1a1a2e;
+                color: #e0e0e0;
+            }
+            
+            /* Group boxes */
+            QGroupBox {
+                border: 1px solid #533483;
+                margin-top: 0.5em;
+                padding-top: 0.5em;
+                background-color: #1a1a2e;
+            }
+            
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px;
+                background-color: #1a1a2e;
+                color: #e0e0e0;
+            }
+            
+            /* Input widgets */
             QLineEdit, QTextEdit, QComboBox, QSpinBox, QDoubleSpinBox {
                 background-color: #16213e;
                 border: 1px solid #0f3460;
                 padding: 2px;
                 color: #e0e0e0;
             }
+            
+            /* Buttons */
             QPushButton {
                 background-color: #0f3460;
                 border: 1px solid #533483;
                 padding: 3px 8px;
                 min-height: 20px;
+                color: #e0e0e0;
             }
+            
             QPushButton:hover {
                 background-color: #533483;
             }
-            QGroupBox {
-                border: 1px solid #533483;
-                margin-top: 0.5em;
-                padding-top: 0.5em;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 3px;
-            }
+            
+            /* Sliders */
             QSlider::groove:horizontal {
                 border: 1px solid #533483;
                 height: 4px;
                 background: #16213e;
             }
+            
             QSlider::handle:horizontal {
                 background: #533483;
                 width: 12px;
                 margin: -4px 0;
             }
+            
+            /* Checkboxes */
             QCheckBox {
                 spacing: 3px;
+                background-color: #1a1a2e;
+                color: #e0e0e0;
             }
+            
             QCheckBox::indicator {
                 width: 14px;
                 height: 14px;
                 background-color: #16213e;
                 border: 1px solid #533483;
             }
+            
             QCheckBox::indicator:checked {
                 background-color: #533483;
             }
+            
+            /* Tab widget */
             QTabWidget::pane {
                 border: 1px solid #533483;
                 background-color: #1a1a2e;
             }
+            
             QTabWidget::tab-bar {
                 left: 5px;
+                background-color: #1a1a2e;
             }
+            
             QTabBar::tab {
                 background-color: #16213e;
                 border: 1px solid #533483;
                 padding: 5px 10px;
                 margin-right: 2px;
+                color: #e0e0e0;
             }
+            
             QTabBar::tab:selected {
                 background-color: #0f3460;
             }
+            
             QTabBar::tab:hover {
                 background-color: #533483;
             }
+            
+            /* Scrollbars */
+            QScrollBar:vertical {
+                background: #1a1a2e;
+                width: 12px;
+                margin: 0;
+                border: none;
+            }
+            
+            QScrollBar::handle:vertical {
+                background: #533483;
+                min-height: 20px;
+                border-radius: 6px;
+            }
+            
+            QScrollBar::add-line:vertical,
+            QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            
+            QScrollBar::up-arrow:vertical,
+            QScrollBar::down-arrow:vertical,
+            QScrollBar::add-page:vertical,
+            QScrollBar::sub-page:vertical {
+                background: none;
+                border: none;
+            }
+            
+            /* Menu and status bar */
+            QMenuBar, QStatusBar {
+                background-color: #1a1a2e;
+                color: #e0e0e0;
+            }
+            
+            QMenuBar::item {
+                background-color: #1a1a2e;
+                color: #e0e0e0;
+            }
+            
+            QMenuBar::item:selected {
+                background-color: #533483;
+            }
+            
+            /* Tooltips */
+            QToolTip {
+                background-color: #16213e;
+                color: #e0e0e0;
+                border: 1px solid #533483;
+            }
         """
+        
+        # Set style sheet for the entire application
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(self.default_style)
         
         # Initialize UI elements as class attributes
         self.sub1_font_slider = None
@@ -193,38 +284,12 @@ class BaseTab(QWidget):
         if event.type() == QEvent.Type.Wheel:
             modifiers = event.modifiers()
             
-            # Block scrollbar scrolling when any modifier is pressed
-            if modifiers & (Qt.KeyboardModifier.ControlModifier |
-                          Qt.KeyboardModifier.ShiftModifier |
-                          Qt.KeyboardModifier.AltModifier |
-                          Qt.KeyboardModifier.MetaModifier):
-                
-                # If Ctrl is pressed, handle scaling
-                if modifiers & Qt.KeyboardModifier.ControlModifier:
-                    delta = event.angleDelta().y()
-                    if delta > 0:
-                        self.adjust_scale(25)
-                        self.logger.debug(f"Scale increased to {self.scale_slider.value()}%")
-                    elif delta < 0:
-                        self.adjust_scale(-25)
-                        self.logger.debug(f"Scale decreased to {self.scale_slider.value()}%")
-                
-                # If Meta (Win) is pressed and the target is a QComboBox, change its index
-                if modifiers & Qt.KeyboardModifier.MetaModifier and isinstance(obj, QComboBox):
-                    delta = event.angleDelta().y()
-                    current_index = obj.currentIndex()
-                    if delta > 0 and current_index > 0:
-                        obj.setCurrentIndex(current_index - 1)
-                    elif delta < 0 and current_index < obj.count() - 1:
-                        obj.setCurrentIndex(current_index + 1)
-                
-                return True
+            # If the object is not a scrollbar, block the scroll event
+            if not isinstance(obj, QScrollBar):
+                return True  # Block scrolling
             
-            # Only allow scrolling when the mouse is over the scrollbar
-            if isinstance(obj, QScrollBar):
-                return False  # Allow the scroll event
-            else:
-                return True  # Block the scroll event
+            # Allow scrolling when over scrollbar
+            return False  # Let the event propagate
                 
         return super().eventFilter(obj, event)
 
@@ -443,9 +508,10 @@ class BaseTab(QWidget):
         # Log section (moved to bottom)
         self.setup_log_section()
         
-        # Install event filter on combo boxes
-        for combo in self.findChildren(QComboBox):
-            combo.installEventFilter(self)
+        # Install event filter on the scroll area and its viewport
+        for scroll_area in self.findChildren(QScrollArea):
+            scroll_area.installEventFilter(self)
+            scroll_area.viewport().installEventFilter(self)
 
     def setup_scale_selection(self):
         """Setup scale selection group."""
