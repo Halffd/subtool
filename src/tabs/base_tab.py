@@ -234,6 +234,9 @@ class BaseTab(QWidget):
         
         # Setup UI after settings are loaded
         self.setup_ui()
+        
+        # Now that UI is set up, connect signals
+        self.connect_signals()
 
     def setup_logging(self):
         """Setup logging configuration."""
@@ -574,115 +577,102 @@ class BaseTab(QWidget):
         self.update_scale(initial_scale)
 
     def setup_subtitle_sizes(self):
-        """Setup font size controls for both subtitles."""
-        size_group = QGroupBox("Subtitle Font Sizes")
-        size_layout = QVBoxLayout()
+        """Setup subtitle font size controls."""
+        font_group = QGroupBox("Subtitle Font Sizes")
+        font_layout = QVBoxLayout()
         
-        # Subtitle 1 size
-        sub1_size_layout = QHBoxLayout()
-        sub1_size_layout.addWidget(QLabel("Subtitle 1 Size:"))
+        # Sub1 font size
+        sub1_layout = QHBoxLayout()
+        sub1_layout.addWidget(QLabel("Sub1 Font Size:"))
         
         self.sub1_font_slider = QSlider(Qt.Orientation.Horizontal)
         self.sub1_font_slider.setMinimum(8)
-        self.sub1_font_slider.setMaximum(52)
+        self.sub1_font_slider.setMaximum(48)
         self.sub1_font_slider.setValue(self.settings.get('sub1_font_size', 16))
-        self.sub1_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.sub1_font_slider.setTickInterval(4)
         
         self.sub1_font_spinbox = QSpinBox()
         self.sub1_font_spinbox.setMinimum(8)
-        self.sub1_font_spinbox.setMaximum(52)
+        self.sub1_font_spinbox.setMaximum(48)
         self.sub1_font_spinbox.setValue(self.settings.get('sub1_font_size', 16))
-        self.sub1_font_spinbox.setSuffix("px")
         
-        sub1_size_layout.addWidget(self.sub1_font_slider)
-        sub1_size_layout.addWidget(self.sub1_font_spinbox)
-        size_layout.addLayout(sub1_size_layout)
+        # Connect slider and spinbox (these are local connections, not for saving)
+        self.sub1_font_slider.valueChanged.connect(self.sub1_font_spinbox.setValue)
+        self.sub1_font_spinbox.valueChanged.connect(self.sub1_font_slider.setValue)
         
-        # Subtitle 2 size
-        sub2_size_layout = QHBoxLayout()
-        sub2_size_layout.addWidget(QLabel("Subtitle 2 Size:"))
+        sub1_layout.addWidget(self.sub1_font_slider)
+        sub1_layout.addWidget(self.sub1_font_spinbox)
+        
+        # Sub2 font size
+        sub2_layout = QHBoxLayout()
+        sub2_layout.addWidget(QLabel("Sub2 Font Size:"))
         
         self.sub2_font_slider = QSlider(Qt.Orientation.Horizontal)
         self.sub2_font_slider.setMinimum(8)
-        self.sub2_font_slider.setMaximum(52)
+        self.sub2_font_slider.setMaximum(48)
         self.sub2_font_slider.setValue(self.settings.get('sub2_font_size', 16))
-        self.sub2_font_slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        self.sub2_font_slider.setTickInterval(4)
         
         self.sub2_font_spinbox = QSpinBox()
         self.sub2_font_spinbox.setMinimum(8)
-        self.sub2_font_spinbox.setMaximum(52)
+        self.sub2_font_spinbox.setMaximum(48)
         self.sub2_font_spinbox.setValue(self.settings.get('sub2_font_size', 16))
-        self.sub2_font_spinbox.setSuffix("px")
         
-        sub2_size_layout.addWidget(self.sub2_font_slider)
-        sub2_size_layout.addWidget(self.sub2_font_spinbox)
-        size_layout.addLayout(sub2_size_layout)
-        
-        # Connect signals
-        self.sub1_font_slider.valueChanged.connect(self.sub1_font_spinbox.setValue)
-        self.sub1_font_spinbox.valueChanged.connect(self.sub1_font_slider.setValue)
+        # Connect slider and spinbox (these are local connections, not for saving)
         self.sub2_font_slider.valueChanged.connect(self.sub2_font_spinbox.setValue)
         self.sub2_font_spinbox.valueChanged.connect(self.sub2_font_slider.setValue)
         
-        # Connect to settings save
-        self.sub1_font_slider.valueChanged.connect(lambda v: self.save_value_to_settings('sub1_font_size', v))
-        self.sub2_font_slider.valueChanged.connect(lambda v: self.save_value_to_settings('sub2_font_size', v))
+        sub2_layout.addWidget(self.sub2_font_slider)
+        sub2_layout.addWidget(self.sub2_font_spinbox)
         
-        size_group.setLayout(size_layout)
-        self.layout.addWidget(size_group)
+        font_layout.addLayout(sub1_layout)
+        font_layout.addLayout(sub2_layout)
+        
+        font_group.setLayout(font_layout)
+        self.layout.addWidget(font_group)
 
     def setup_color_selection(self):
-        """Setup color selection group."""
-        color_group = QGroupBox("Color Selection")
+        """Setup color selection."""
+        color_group = QGroupBox("Subtitle Color")
         color_layout = QVBoxLayout()
         
         # Add description
-        description = QLabel("Select the color for the first subtitle track:")
+        description = QLabel("Select the color for the first subtitle:")
         description.setWordWrap(True)
         color_layout.addWidget(description)
         
-        # Color selection row
-        color_row = QHBoxLayout()
-        
-        # Color combo - use constants from merger.py
+        # Color selection combo box
         self.color_combo = QComboBox()
         self.color_combo.addItems([
-            YELLOW,  # Default yellow
-            WHITE,
-            BLUE,
-            RED,
-            GREEN
+            "Yellow", "White", "Red", "Blue", "Green"
         ])
-        self.color_combo.currentTextChanged.connect(self.update_color_preview)
-        color_row.addWidget(self.color_combo)
         
-        # Color picker button with fixed width
-        color_picker_btn = QPushButton("...")
-        color_picker_btn.setFixedWidth(40)
-        color_picker_btn.setToolTip("Open custom color picker")
-        color_picker_btn.clicked.connect(self.on_color_picker_clicked)
-        color_row.addWidget(color_picker_btn)
-        
-        # Color preview label
+        # Color preview
         self.color_preview = QLabel()
-        self.color_preview.setFixedSize(30, 30)
-        color_row.addWidget(self.color_preview)
+        self.color_preview.setFixedSize(50, 20)
+        self.color_preview.setStyleSheet("background-color: Yellow; border: 1px solid black;")
         
-        color_layout.addLayout(color_row)
+        # Custom color button
+        custom_color_btn = QPushButton("Custom Color")
+        custom_color_btn.clicked.connect(self.on_color_picker_clicked)
+        
+        # Layout for color selection
+        color_select_layout = QHBoxLayout()
+        color_select_layout.addWidget(self.color_combo)
+        color_select_layout.addWidget(self.color_preview)
+        color_select_layout.addWidget(custom_color_btn)
+        
+        color_layout.addLayout(color_select_layout)
         color_group.setLayout(color_layout)
         self.layout.addWidget(color_group)
         
         # Set initial color from settings
-        initial_color = self.settings.get('color', YELLOW)  # Use YELLOW constant as default
+        initial_color = self.settings.get('color', 'Yellow')
         index = self.color_combo.findText(initial_color)
         if index >= 0:
             self.color_combo.setCurrentIndex(index)
-        self.update_color_preview(initial_color)
-
-        # Connect color change to save settings
-        self.color_combo.currentTextChanged.connect(self.save_value_to_settings)
+            self.update_color_preview(initial_color)
+            
+        # Connect color change to preview update
+        self.color_combo.currentTextChanged.connect(self.update_color_preview)
 
     def setup_codec_selection(self):
         """Setup codec selection."""
@@ -707,9 +697,6 @@ class BaseTab(QWidget):
         if index >= 0:
             self.codec_combo.setCurrentIndex(index)
 
-        # Connect codec change to save settings
-        self.codec_combo.currentTextChanged.connect(self.save_value_to_settings)
-
     def setup_options(self):
         """Setup options section."""
         options_group = QGroupBox("Options")
@@ -719,16 +706,19 @@ class BaseTab(QWidget):
         self.option_merge_subtitles.setChecked(
             self.settings.get('merge_automatically', True)
         )
-        self.option_merge_subtitles.stateChanged.connect(self.save_value_to_settings)
         
         self.option_generate_log = QCheckBox("Generate Log File")
         self.option_generate_log.setChecked(
             self.settings.get('generate_log', False)
         )
-        self.option_generate_log.stateChanged.connect(self.save_value_to_settings)
         
         options_layout.addWidget(self.option_merge_subtitles)
         options_layout.addWidget(self.option_generate_log)
+        
+        # Add button to load previous configurations
+        load_config_btn = QPushButton("Load Previous Configuration")
+        load_config_btn.clicked.connect(self.load_previous_config)
+        options_layout.addWidget(load_config_btn)
         
         options_group.setLayout(options_layout)
         self.layout.addWidget(options_group)
@@ -821,10 +811,10 @@ class BaseTab(QWidget):
             'last_directory': str(Path.home()),
             'last_video_directory': str(Path.home()),
             'last_subtitle_directory': str(Path.home()),
-            'sub1_pattern': r'\[Some-Stuffs\]_Pocket_Monsters_\(2019\)_\d+.*(?<!Clean)\.srt$',  # Match base subtitles without Clean
-            'sub2_pattern': r'\[Some-Stuffs\]_Pocket_Monsters_\(2019\)_\d+.*-Clean\.srt$',  # Match files ending with Clean.srt
-            'sub1_episode_pattern': r'_(\d{3})_',  # Match episode numbers between underscores
-            'sub2_episode_pattern': r'_(\d{3})_',  # Match episode numbers between underscores
+            'sub1_pattern': r'Squid Girl - S01E\d+\.large-v3.*\.srt$',  # Match large-v3 subtitles
+            'sub2_pattern': r'Squid Girl - S01E\d+\.4\.eng\.srt$',  # Match .4.eng subtitles
+            'sub1_episode_pattern': r'S01E(\d+)',  # Extract episode number after S01E
+            'sub2_episode_pattern': r'S01E(\d+)',  # Extract episode number after S01E
             'episode_pattern': r'\d+'  # Legacy support
         }
         
@@ -879,9 +869,15 @@ class BaseTab(QWidget):
         except Exception as e:
             self.logger.error(f"Error saving settings: {e}")
 
-    def save_value_to_settings(self, key: str, value: str):
+    def save_value_to_settings(self, key=None, value=None):
         """Save a specific value to settings."""
         try:
+            # Handle case when called from a signal that doesn't provide key and value
+            if key is None or value is None:
+                # Just save all values instead
+                self.save_all_values()
+                return
+                
             self.settings[key] = value
             with open(self.settings_file, 'w', encoding='utf-8') as f:
                 json.dump(self.settings, f, indent=4)
@@ -893,32 +889,51 @@ class BaseTab(QWidget):
         """Save all current values to settings file."""
         try:
             # Update all settings
-            settings_update = {
-                # UI Scale
-                'ui_scale': self.scale_slider.value() if hasattr(self, 'scale_slider') else 375,
+            settings_update = {}
+            
+            # Only add settings for UI elements that exist and are initialized
+            if hasattr(self, 'scale_slider') and self.scale_slider is not None:
+                settings_update['ui_scale'] = self.scale_slider.value()
+            else:
+                settings_update['ui_scale'] = self.settings.get('ui_scale', 375)
                 
-                # Font sizes
-                'sub1_font_size': self.sub1_font_slider.value() if hasattr(self, 'sub1_font_slider') else 16,
-                'sub2_font_size': self.sub2_font_slider.value() if hasattr(self, 'sub2_font_slider') else 16,
+            if hasattr(self, 'sub1_font_slider') and self.sub1_font_slider is not None:
+                settings_update['sub1_font_size'] = self.sub1_font_slider.value()
+            else:
+                settings_update['sub1_font_size'] = self.settings.get('sub1_font_size', 16)
                 
-                # Colors and codec
-                'color': self.color_combo.currentText() if hasattr(self, 'color_combo') else 'Yellow',
-                'codec': self.codec_combo.currentText() if hasattr(self, 'codec_combo') else 'UTF-8',
+            if hasattr(self, 'sub2_font_slider') and self.sub2_font_slider is not None:
+                settings_update['sub2_font_size'] = self.sub2_font_slider.value()
+            else:
+                settings_update['sub2_font_size'] = self.settings.get('sub2_font_size', 16)
                 
-                # Options
-                'merge_automatically': self.option_merge_subtitles.isChecked() if hasattr(self, 'option_merge_subtitles') else True,
-                'generate_log': self.option_generate_log.isChecked() if hasattr(self, 'option_generate_log') else False,
-            }
+            if hasattr(self, 'color_combo') and self.color_combo is not None:
+                settings_update['color'] = self.color_combo.currentText()
+            else:
+                settings_update['color'] = self.settings.get('color', 'Yellow')
+                
+            if hasattr(self, 'codec_combo') and self.codec_combo is not None:
+                settings_update['codec'] = self.codec_combo.currentText()
+            else:
+                settings_update['codec'] = self.settings.get('codec', 'UTF-8')
+                
+            if hasattr(self, 'option_merge_subtitles') and self.option_merge_subtitles is not None:
+                settings_update['merge_automatically'] = self.option_merge_subtitles.isChecked()
+            else:
+                settings_update['merge_automatically'] = self.settings.get('merge_automatically', True)
+                
+            if hasattr(self, 'option_generate_log') and self.option_generate_log is not None:
+                settings_update['generate_log'] = self.option_generate_log.isChecked()
+            else:
+                settings_update['generate_log'] = self.settings.get('generate_log', False)
             
             # Add directory-specific settings if they exist
-            if hasattr(self, 'dir_entry'):
-                settings_update.update({
-                    'last_subtitle_directory': self.dir_entry.text() or str(Path.home()),
-                    'last_directory': str(Path(self.dir_entry.text()).parent) if self.dir_entry.text() else str(Path.home())
-                })
+            if hasattr(self, 'dir_entry') and self.dir_entry is not None and self.dir_entry.text():
+                settings_update['last_subtitle_directory'] = self.dir_entry.text()
+                settings_update['last_directory'] = str(Path(self.dir_entry.text()).parent)
             
-            if hasattr(self, 'video_dir_entry'):
-                settings_update['last_video_directory'] = str(Path(self.video_dir_entry.text()).parent) if self.video_dir_entry.text() else str(Path.home())
+            if hasattr(self, 'video_dir_entry') and self.video_dir_entry is not None and self.video_dir_entry.text():
+                settings_update['last_video_directory'] = self.video_dir_entry.text()
             
             # Update settings and save
             self.settings.update(settings_update)
@@ -990,4 +1005,130 @@ class BaseTab(QWidget):
         except Exception as e:
             self.logger.error(f"Error testing patterns: {e}")
             QMessageBox.critical(self, "Error", f"Error testing patterns: {e}")
+
+    def load_previous_config(self):
+        """Show a dialog to select and load a previous configuration."""
+        try:
+            # Get list of config files
+            config_files = list(self.config_dir.glob("config_*.json"))
+            
+            if not config_files:
+                QMessageBox.information(self, "No Configurations", 
+                                       "No previous configurations found.")
+                return
+            
+            # Sort by modification time (newest first)
+            config_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            
+            # Create a simple dialog to select a config file
+            selected_item = QFileDialog.getOpenFileName(
+                self, 
+                "Select Configuration File",
+                str(self.config_dir),
+                "JSON Files (*.json)"
+            )[0]  # Get the first element of the tuple
+            
+            if not selected_item:
+                return
+                
+            selected_path = Path(selected_item)
+            
+            # Load the selected config
+            with open(selected_path, 'r', encoding='utf-8') as f:
+                new_settings = json.load(f)
+                
+            # Update current settings
+            self.settings.update(new_settings)
+            
+            # Save to current settings file
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, indent=4)
+                
+            # Reload UI with new settings
+            self.reload_settings()
+            
+            self.logger.info(f"Loaded configuration from {selected_path.name}")
+            QMessageBox.information(self, "Configuration Loaded", 
+                                   f"Successfully loaded configuration from {selected_path.name}")
+                
+        except Exception as e:
+            self.logger.error(f"Error loading previous configuration: {e}")
+            QMessageBox.critical(self, "Error", f"Error loading configuration: {e}")
+    
+    def reload_settings(self):
+        """Reload UI elements with current settings."""
+        # Update UI scale
+        if hasattr(self, 'scale_slider'):
+            self.scale_slider.setValue(self.settings.get('ui_scale', 375))
+            
+        # Update font sizes
+        if hasattr(self, 'sub1_font_slider'):
+            self.sub1_font_slider.setValue(self.settings.get('sub1_font_size', 16))
+        if hasattr(self, 'sub2_font_slider'):
+            self.sub2_font_slider.setValue(self.settings.get('sub2_font_size', 16))
+            
+        # Update color
+        if hasattr(self, 'color_combo'):
+            color = self.settings.get('color', 'Yellow')
+            index = self.color_combo.findText(color)
+            if index >= 0:
+                self.color_combo.setCurrentIndex(index)
+                
+        # Update codec
+        if hasattr(self, 'codec_combo'):
+            codec = self.settings.get('codec', 'UTF-8')
+            index = self.codec_combo.findText(codec)
+            if index >= 0:
+                self.codec_combo.setCurrentIndex(index)
+                
+        # Update options
+        if hasattr(self, 'option_merge_subtitles'):
+            self.option_merge_subtitles.setChecked(
+                self.settings.get('merge_automatically', True)
+            )
+        if hasattr(self, 'option_generate_log'):
+            self.option_generate_log.setChecked(
+                self.settings.get('generate_log', False)
+            )
+            
+        # Update pattern entries if they exist
+        if hasattr(self, 'sub1_pattern_entry'):
+            self.sub1_pattern_entry.setText(
+                self.settings.get('sub1_pattern', '')
+            )
+        if hasattr(self, 'sub2_pattern_entry'):
+            self.sub2_pattern_entry.setText(
+                self.settings.get('sub2_pattern', '')
+            )
+        if hasattr(self, 'sub1_episode_pattern_entry'):
+            self.sub1_episode_pattern_entry.setText(
+                self.settings.get('sub1_episode_pattern', '')
+            )
+        if hasattr(self, 'sub2_episode_pattern_entry'):
+            self.sub2_episode_pattern_entry.setText(
+                self.settings.get('sub2_episode_pattern', '')
+            )
+            
+        self.logger.debug("Settings reloaded in UI")
+
+    def connect_signals(self):
+        """Connect signals for all UI elements."""
+        # Connect signals for specific UI elements
+        if hasattr(self, 'sub1_font_slider') and self.sub1_font_slider is not None:
+            self.sub1_font_slider.valueChanged.connect(lambda v: self.save_value_to_settings('sub1_font_size', v))
+            
+        if hasattr(self, 'sub2_font_slider') and self.sub2_font_slider is not None:
+            self.sub2_font_slider.valueChanged.connect(lambda v: self.save_value_to_settings('sub2_font_size', v))
+            
+        if hasattr(self, 'color_combo') and self.color_combo is not None:
+            self.color_combo.currentTextChanged.connect(lambda: self.save_all_values())
+            
+        if hasattr(self, 'codec_combo') and self.codec_combo is not None:
+            self.codec_combo.currentTextChanged.connect(lambda: self.save_all_values())
+            
+        if hasattr(self, 'option_merge_subtitles') and self.option_merge_subtitles is not None:
+            self.option_merge_subtitles.stateChanged.connect(lambda: self.save_all_values())
+            
+        if hasattr(self, 'option_generate_log') and self.option_generate_log is not None:
+            self.option_generate_log.stateChanged.connect(lambda: self.save_all_values())
 

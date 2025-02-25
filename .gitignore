@@ -13,3 +13,4 @@ cfg
 config
 log
 __pycache__
+src/tabs/conf

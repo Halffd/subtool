@@ -1,6 +1,8 @@
 import os
 import shutil
 import subprocess
+import datetime
+import re
 from pathlib import Path
 from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QPushButton,
@@ -220,6 +222,9 @@ class SingleFilesTab(BaseTab):
                 self.logger.error("Please select both subtitle files")
                 return
             
+            # Create a new config file with the basename of the directory and date
+            self.create_new_config_file(sub1_file)
+            
             # Create output path
             output_path = Path(sub1_file).parent
             base_name = Path(sub1_file).stem
@@ -254,6 +259,42 @@ class SingleFilesTab(BaseTab):
             
         except Exception as e:
             self.logger.error(f"Error during merge operation: {e}")
+
+    def create_new_config_file(self, file_path):
+        """Create a new configuration file with the basename of the directory and date."""
+        try:
+            # Get the basename of the directory containing the file
+            dir_basename = Path(file_path).parent.name
+            
+            # Clean the basename to make it suitable for a filename
+            # Replace spaces and special characters with underscores
+            clean_basename = re.sub(r'[^\w\-]', '_', dir_basename)
+            
+            # Get current date and time
+            now = datetime.datetime.now()
+            date_str = now.strftime("%Y%m%d_%H%M%S")
+            
+            # Create a new config filename
+            new_config_filename = f"config_{clean_basename}_{date_str}.json"
+            new_config_path = self.config_dir / new_config_filename
+            
+            # Save current settings to the new file
+            self.save_all_values()
+            
+            # Copy the current settings file to the new file
+            if self.settings_file.exists():
+                with open(self.settings_file, 'r', encoding='utf-8') as src_file:
+                    settings_data = src_file.read()
+                    
+                with open(new_config_path, 'w', encoding='utf-8') as dest_file:
+                    dest_file.write(settings_data)
+                
+                self.logger.info(f"Created new configuration file: {new_config_filename}")
+            else:
+                self.logger.warning("No settings file exists to copy")
+                
+        except Exception as e:
+            self.logger.error(f"Error creating new configuration file: {e}")
 
     def browse_file(self, entry: QLineEdit, title: str):
         """Browse for a subtitle file."""
