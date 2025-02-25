@@ -210,6 +210,7 @@ class BaseTab(QWidget):
         self.codec_combo = None
         self.option_merge_subtitles = None
         self.option_generate_log = None
+        self.option_convert_to_ass = None
         
         # Set style sheet
         self.setStyleSheet(self.default_style)
@@ -712,8 +713,18 @@ class BaseTab(QWidget):
             self.settings.get('generate_log', False)
         )
         
+        # Add option for ASS conversion with furigana
+        self.option_convert_to_ass = QCheckBox("Convert to ASS with Furigana")
+        self.option_convert_to_ass.setChecked(
+            self.settings.get('convert_to_ass', False)
+        )
+        self.option_convert_to_ass.setToolTip(
+            "Convert SRT files with furigana in parentheses to ASS format with proper ruby text"
+        )
+        
         options_layout.addWidget(self.option_merge_subtitles)
         options_layout.addWidget(self.option_generate_log)
+        options_layout.addWidget(self.option_convert_to_ass)
         
         # Add button to load previous configurations
         load_config_btn = QPushButton("Load Previous Configuration")
@@ -926,6 +937,11 @@ class BaseTab(QWidget):
                 settings_update['generate_log'] = self.option_generate_log.isChecked()
             else:
                 settings_update['generate_log'] = self.settings.get('generate_log', False)
+                
+            if hasattr(self, 'option_convert_to_ass') and self.option_convert_to_ass is not None:
+                settings_update['convert_to_ass'] = self.option_convert_to_ass.isChecked()
+            else:
+                settings_update['convert_to_ass'] = self.settings.get('convert_to_ass', False)
             
             # Add directory-specific settings if they exist
             if hasattr(self, 'dir_entry') and self.dir_entry is not None and self.dir_entry.text():
@@ -1090,6 +1106,10 @@ class BaseTab(QWidget):
             self.option_generate_log.setChecked(
                 self.settings.get('generate_log', False)
             )
+        if hasattr(self, 'option_convert_to_ass'):
+            self.option_convert_to_ass.setChecked(
+                self.settings.get('convert_to_ass', False)
+            )
             
         # Update pattern entries if they exist
         if hasattr(self, 'sub1_pattern_entry'):
@@ -1131,4 +1151,7 @@ class BaseTab(QWidget):
             
         if hasattr(self, 'option_generate_log') and self.option_generate_log is not None:
             self.option_generate_log.stateChanged.connect(lambda: self.save_all_values())
+            
+        if hasattr(self, 'option_convert_to_ass') and self.option_convert_to_ass is not None:
+            self.option_convert_to_ass.stateChanged.connect(lambda: self.save_all_values())
 

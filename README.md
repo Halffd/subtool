@@ -8,6 +8,8 @@ A PyQt6-based GUI application for merging multiple SRT subtitle files into a sin
 - Two operation modes:
   - Single Files: Select and merge individual subtitle files
   - Directory: Merge subtitle files in a directory based on file patterns
+- Convert SRT files to ASS format with furigana (ruby text) support
+- Automatic furigana generation for Japanese text
 - Dark theme UI
 - Progress tracking for merge operations
 - Graceful error handling
@@ -17,6 +19,10 @@ A PyQt6-based GUI application for merging multiple SRT subtitle files into a sin
 - Python 3.6+
 - PyQt6
 - pysrt
+- pysubs2
+- janome (for automatic furigana generation)
+- jaconv
+- regex
 
 ## Installation
 
@@ -69,73 +75,61 @@ This tool converts SRT subtitle files to ASS format with furigana (ruby text) fo
 - Automatically adds furigana (ruby text) to Japanese kanji
 - Processes multiple files in batch
 - Works with mpv and other media players that support ASS subtitles
+- Advanced styling with precise positioning and colored text
+- Professional-quality subtitles matching anime fansub standards
 
-## Requirements
+## Automatic Furigana Generation
 
-- Python 3.6+
-- pysrt library (`pip install pysrt`)
+The tool now includes automatic furigana generation for Japanese text. This feature uses the Janome tokenizer to analyze Japanese text and automatically add furigana to kanji characters. To use this feature:
 
-## Installation
+1. Enable the "Convert to ASS with Furigana" option in the application
+2. Process your subtitle files as usual
+3. The tool will automatically generate furigana for all kanji in the subtitles
 
-1. Clone or download this repository
-2. Install the required dependencies:
+This is especially useful for Japanese language learners who want to see the readings of kanji characters while watching videos.
 
-```bash
-pip install pysrt
+## Manual Furigana Format
+
+If you prefer to manually add furigana, the tool also supports the following format in SRT files:
+
+```
+漢字(かんじ)は難(むずか)しいです。
 ```
 
-3. Make the scripts executable:
+This will be converted to ASS format with proper ruby text.
 
-```bash
-chmod +x srt_to_furigana_ass.py
-chmod +x convert_subtitles.sh
+## Advanced Styling
+
+The tool now supports advanced styling that matches professional anime subtitles:
+
+- Each character or word is positioned precisely on screen
+- Ruby text (furigana) is placed directly above the base text
+- Colored text is supported with special color tags
+- Underlines are added beneath text with furigana
+- Multiple subtitle lines with proper vertical spacing
+
+Example of color tags that can be used in SRT files:
+
+```
+<font color="darkblue">青い</font>空を<font color="purple">見上げる</font>
 ```
 
-## Usage
+Available colors include:
+- darkblue
+- lightblue
+- purple
+- orange
+- darkgreen
+- red
+- blue
+- green
+- yellow
+- cyan
+- magenta
+- white
+- black
 
-### Basic Usage
-
-To convert all SRT files in the current directory:
-
-```bash
-./convert_subtitles.sh
-```
-
-### Specify Input and Output Directories
-
-```bash
-./convert_subtitles.sh /path/to/input/directory /path/to/output/directory
-```
-
-### Customization Options
-
-The script supports several options to customize the appearance of subtitles and furigana:
-
-```bash
-# Change font and sizes
-./convert_subtitles.sh . . --font "MS Gothic" --font-size 36 --ruby-font-size 18
-
-# Change text and ruby colors (using ASS hex format &HAABBGGRR)
-./convert_subtitles.sh . . --text-color "&H00FFFFFF" --ruby-color "&H0000FFFF"
-
-# Change outline and shadow
-./convert_subtitles.sh . . --outline-size 3 --shadow-size 3 --outline-color "&H00000000"
-```
-
-Available options:
-- `--font`: Font to use for subtitles (default: Arial)
-- `--font-size`: Font size for main text (default: 48)
-- `--ruby-font-size`: Font size for ruby text (default: 24)
-- `--text-color`: Color for main text in ASS format (default: &H00FFFFFF - white)
-- `--ruby-color`: Color for ruby text in ASS format (default: &H00FFFFFF - white)
-- `--outline-color`: Color for text outline (default: &H00000000 - black)
-- `--shadow-color`: Color for text shadow (default: &H00000000 - black)
-- `--outline-size`: Size of text outline (default: 2)
-- `--shadow-size`: Size of text shadow (default: 2)
-
-Note: ASS colors use the format &HAABBGGRR (alpha, blue, green, red).
-
-### Playing with mpv
+## Playing with mpv
 
 To play a video with the converted ASS subtitles:
 
@@ -143,40 +137,38 @@ To play a video with the converted ASS subtitles:
 mpv video.mp4 --sub-file=video.ass
 ```
 
-## SRT Format Requirements
+## ASS Ruby Text Implementation
 
-The script expects SRT files with furigana in parentheses after the kanji. For example:
+The tool uses two different methods for ruby text:
 
-```
-1
-00:00:01,000 --> 00:00:05,000
-漢字(かんじ)は難(むずか)しいです。
-```
+1. Simple mode: Uses the `\rt` tag for basic ruby text
+2. Advanced mode: Creates separate dialogue entries for each text element with precise positioning
 
-This will be converted to ASS format with proper ruby text.
-
-## How It Works
-
-The script uses the ASS subtitle format's ruby text feature to display furigana above kanji characters:
-
-1. It parses SRT files using the `pysrt` library
-2. It identifies patterns where kanji is followed by furigana in parentheses
-3. It converts these patterns to ASS ruby text tags using the `\rt` tag
-4. It creates an ASS file with proper style definitions for both main text and ruby text
-
-### ASS Ruby Text Implementation
-
-The script uses the `\rt` tag for ruby text, which is the correct way to implement furigana in ASS subtitles:
+The advanced mode creates subtitles that look like this in the ASS file:
 
 ```
-{\rt(かんじ)}漢字
+Dialogue: 3,0:00:01.00,0:00:05.30,Default,,0,0,0,,{\pos(666,903)}漢字
+Dialogue: 2,0:00:01.00,0:00:05.30,Ruby,,0,0,0,,{\pos(666,856)}かんじ
+Dialogue: 1,0:00:01.00,0:00:05.30,Underline,,0,0,0,,{\pos(0,0)}{\c&H4E4EF1&}{\p1}m 613 940 l 719 940 719 944 613 944{\p0}{\c}
 ```
 
-This displays "かんじ" above "漢字" in the subtitle.
+This creates professional-quality subtitles with perfect alignment and styling.
+
+## Customization Options
+
+The ASS conversion supports several options to customize the appearance of subtitles and furigana:
+
+- Font family (default: MS Gothic for Japanese text)
+- Font size for main text and ruby text
+- Text color for main text and ruby text
+- Outline and shadow settings
+- Advanced styling with separate dialogue entries
 
 ## Troubleshooting
 
-If you see warnings like `Warning: no style named 'かんじ' found` in mpv, it means the ruby text is not implemented correctly. Make sure you're using the latest version of this script which uses the `\rt` tag instead of `\ruby`.
+If you see warnings like `Warning: no style named 'かんじ' found` in mpv, it means the ruby text is not implemented correctly. Make sure you're using the latest version of this tool which uses the `\rt` tag instead of `\ruby`.
+
+If the advanced styling doesn't display correctly in your media player, try using a player with better ASS subtitle support, such as mpv or VLC.
 
 ## License
 

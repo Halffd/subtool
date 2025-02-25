@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 )
 from .base_tab import BaseTab
 from ..utils.merger import Merger, WHITE
+from ..utils.ass_converter import process_directory as process_ass_directory
 
 class DirectoryTab(BaseTab):
     """Tab for processing directories."""
@@ -265,6 +266,35 @@ class DirectoryTab(BaseTab):
             self.logger.info("Starting merge operation...")
             self.logger.info(f"Input directory: {input_dir}")
             self.logger.info(f"Video directory: {video_dir}")
+            
+            # Check if ASS conversion is enabled
+            convert_to_ass = self.option_convert_to_ass.isChecked()
+            if convert_to_ass:
+                self.logger.info("ASS conversion with furigana is enabled")
+                # Process the directory to convert SRT files to ASS
+                try:
+                    # Get style settings
+                    style_kwargs = {
+                        'font': "MS Gothic",  # Japanese font
+                        'font_size': self.sub1_font_slider.value(),
+                        'ruby_font_size': self.sub1_font_slider.value() // 2,  # Half the size for ruby
+                        'text_color': self.color_combo.currentText(),
+                        'auto_generate_furigana': True,  # Use automatic furigana generation
+                        'advanced_styling': True  # Use advanced styling with separate dialogue entries
+                    }
+                    
+                    # Process the directory
+                    ass_files = process_ass_directory(
+                        input_dir=input_dir,
+                        output_dir=video_dir,
+                        **style_kwargs
+                    )
+                    
+                    self.logger.info(f"Successfully converted {len(ass_files)} SRT files to ASS format with furigana")
+                    return
+                except Exception as e:
+                    self.logger.error(f"Error during ASS conversion: {e}")
+                    # Continue with normal merge if ASS conversion fails
             
             # Get patterns from GUI entries
             sub1_pattern = self.sub1_pattern_entry.text()

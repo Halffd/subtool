@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from .base_tab import BaseTab
 from ..utils.merger import Merger, WHITE
+from ..utils.ass_converter import create_ass_from_srt
 
 class SingleFilesTab(BaseTab):
     """Tab for processing single files."""
@@ -228,6 +229,33 @@ class SingleFilesTab(BaseTab):
             # Create output path
             output_path = Path(sub1_file).parent
             base_name = Path(sub1_file).stem
+            
+            # Check if ASS conversion is enabled
+            if self.option_convert_to_ass.isChecked():
+                self.logger.info("ASS conversion with furigana is enabled")
+                try:
+                    # Get style settings
+                    style_kwargs = {
+                        'font': "MS Gothic",  # Japanese font
+                        'font_size': self.sub1_font_slider.value(),
+                        'ruby_font_size': self.sub1_font_slider.value() // 2,  # Half the size for ruby
+                        'text_color': self.color_combo.currentText(),
+                        'auto_generate_furigana': True,  # Use automatic furigana generation
+                        'advanced_styling': True  # Use advanced styling with separate dialogue entries
+                    }
+                    
+                    # Convert the first subtitle file to ASS
+                    ass_file = create_ass_from_srt(
+                        srt_file_path=sub1_file,
+                        output_dir=str(output_path),
+                        **style_kwargs
+                    )
+                    
+                    self.logger.info(f"Successfully converted {sub1_file} to ASS format with furigana: {ass_file}")
+                    return
+                except Exception as e:
+                    self.logger.error(f"Error during ASS conversion: {e}")
+                    # Continue with normal merge if ASS conversion fails
             
             # Create merger instance
             merger = Merger(
