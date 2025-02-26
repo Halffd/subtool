@@ -9,9 +9,13 @@ used in professional anime subtitles with precise positioning and styling.
 
 import os
 import re
+import logging
 from pathlib import Path
 import pysubs2
 from .furigana_generator import FuriganaGenerator
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Default style settings
 DEFAULT_FONT = "MS Gothic"
@@ -62,23 +66,28 @@ def extract_furigana_pairs(text, auto_generate=False):
     Returns:
         list: List of tuples (base_text, furigana, is_kanji)
     """
-    # First, handle any HTML color tags by temporarily replacing them
-    color_placeholders = {}
-    color_counter = 0
+    # First, handle any HTML color tags by directly converting them to ASS color tags
+    def convert_html_to_ass_color(match):
+        color = match.group(1)
+        content = match.group(2)
+        
+        # Convert HTML color to ASS color
+        if color.startswith('#'):
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+            ass_color = f"&H{b:02X}{g:02X}{r:02X}&"
+        else:
+            # Map common color names to ASS colors
+            ass_color = COLOR_MAP.get(color.lower(), "&H00FFFFFF&")
+        
+        # Create ASS color tag
+        return f"{{\\c{ass_color}}}{content}{{\\c}}"
     
-    def replace_color_tag(match):
-        nonlocal color_counter
-        placeholder = f"__COLOR_{color_counter}__"
-        color_placeholders[placeholder] = match.group(0)
-        color_counter += 1
-        return placeholder
-    
-    # Replace color tags with placeholders
-    text_with_placeholders = re.sub(r'<font color="[^"]+">(.*?)</font>', replace_color_tag, text)
+    # Replace HTML color tags with ASS color tags
+    text_with_ass_colors = re.sub(r'<font color="([^"]+)">(.*?)</font>', convert_html_to_ass_color, text)
     
     if auto_generate:
         # Use the furigana generator to add furigana
-        text_with_furigana = furigana_generator.generate(text_with_placeholders)
+        text_with_furigana = furigana_generator.generate(text_with_ass_colors)
         # Extract pairs from the generated format
         pattern = r'(\S+?)\{([^}]+)\}'
         
@@ -94,20 +103,11 @@ def extract_furigana_pairs(text, auto_generate=False):
             if match.start() > last_end:
                 prefix = text_with_furigana[last_end:match.start()]
                 for char in prefix:
-                    # Restore color tags if present
-                    if f"__COLOR_{len(pairs)}" in color_placeholders:
-                        char = color_placeholders[f"__COLOR_{len(pairs)}"]
                     pairs.append((char, None, False))
             
             # Add the kanji with furigana
             base = match.group(1)
             furigana = match.group(2)
-            
-            # Restore color tags if present
-            for placeholder, color_tag in color_placeholders.items():
-                if placeholder in base:
-                    base = base.replace(placeholder, color_tag)
-            
             pairs.append((base, furigana, True))
             
             last_end = match.end()
@@ -118,9 +118,6 @@ def extract_furigana_pairs(text, auto_generate=False):
             # Remove any remaining curly braces
             suffix = re.sub(r'\{[^}]+\}', '', suffix)
             for char in suffix:
-                # Restore color tags if present
-                if f"__COLOR_{len(pairs)}" in color_placeholders:
-                    char = color_placeholders[f"__COLOR_{len(pairs)}"]
                 pairs.append((char, None, False))
         
         return pairs
@@ -129,7 +126,7 @@ def extract_furigana_pairs(text, auto_generate=False):
         pattern = r'(\S+?)\(([^)]+)\)'
         
         # Find all matches
-        matches = re.finditer(pattern, text_with_placeholders)
+        matches = re.finditer(pattern, text_with_ass_colors)
         
         # Process the text
         pairs = []
@@ -138,36 +135,92 @@ def extract_furigana_pairs(text, auto_generate=False):
         for match in matches:
             # Add any text before this match
             if match.start() > last_end:
-                prefix = text_with_placeholders[last_end:match.start()]
-                for i, char in enumerate(prefix):
-                    # Check if this position has a color placeholder
-                    placeholder = f"__COLOR_{len(pairs)}"
-                    if placeholder in color_placeholders:
-                        char = color_placeholders[placeholder]
-                    pairs.append((char, None, False))
+                prefix = text_with_ass_colors[last_end:match.start()]
+                
+                # Handle ASS color tags in the prefix
+                i = 0
+                while i < len(prefix):
+                    if prefix[i:].startswith("{\\c"):
+                        # Find the end of the color tag
+                        end_idx = prefix.find("}", i)
+                        if end_idx != -1:
+                            # Extract the color tag
+                            color_tag = prefix[i:end_idx+1]
+                            # Skip the color tag
+                            i = end_idx + 1
+                            # Add the color tag as a separate pair
+                            pairs.append((color_tag, None, False))
+                            continue
+                    elif prefix[i:].startswith("{\\c}"):
+                        # End of color tag
+                        pairs.append(("{\\c}", None, False))
+                        i += 4
+                        continue
+                    
+                    # Add the character
+                    pairs.append((prefix[i], None, False))
+                    i += 1
             
             # Add the kanji with furigana
             base = match.group(1)
             furigana = match.group(2)
             
-            # Restore color tags if present
-            for placeholder, color_tag in color_placeholders.items():
-                if placeholder in base:
-                    base = base.replace(placeholder, color_tag)
+            # Handle ASS color tags in the base text
+            processed_base = ""
+            i = 0
+            while i < len(base):
+                if base[i:].startswith("{\\c"):
+                    # Find the end of the color tag
+                    end_idx = base.find("}", i)
+                    if end_idx != -1:
+                        # Extract the color tag
+                        color_tag = base[i:end_idx+1]
+                        # Add the color tag to the processed base
+                        processed_base += color_tag
+                        # Skip the color tag
+                        i = end_idx + 1
+                        continue
+                elif base[i:].startswith("{\\c}"):
+                    # End of color tag
+                    processed_base += "{\\c}"
+                    i += 4
+                    continue
+                
+                # Add the character
+                processed_base += base[i]
+                i += 1
             
-            pairs.append((base, furigana, True))
+            pairs.append((processed_base, furigana, True))
             
             last_end = match.end()
         
         # Add any remaining text
-        if last_end < len(text_with_placeholders):
-            suffix = text_with_placeholders[last_end:]
-            for i, char in enumerate(suffix):
-                # Check if this position has a color placeholder
-                placeholder = f"__COLOR_{len(pairs)}"
-                if placeholder in color_placeholders:
-                    char = color_placeholders[placeholder]
-                pairs.append((char, None, False))
+        if last_end < len(text_with_ass_colors):
+            suffix = text_with_ass_colors[last_end:]
+            
+            # Handle ASS color tags in the suffix
+            i = 0
+            while i < len(suffix):
+                if suffix[i:].startswith("{\\c"):
+                    # Find the end of the color tag
+                    end_idx = suffix.find("}", i)
+                    if end_idx != -1:
+                        # Extract the color tag
+                        color_tag = suffix[i:end_idx+1]
+                        # Skip the color tag
+                        i = end_idx + 1
+                        # Add the color tag as a separate pair
+                        pairs.append((color_tag, None, False))
+                        continue
+                elif suffix[i:].startswith("{\\c}"):
+                    # End of color tag
+                    pairs.append(("{\\c}", None, False))
+                    i += 4
+                    continue
+                
+                # Add the character
+                pairs.append((suffix[i], None, False))
+                i += 1
         
         return pairs
 
@@ -209,6 +262,8 @@ def create_advanced_ass_from_srt(
         str: Path to the created ASS file
     """
     try:
+        logger.debug(f"Starting conversion of {srt_file_path} to ASS format")
+        
         # Convert path to Path object
         srt_path = Path(srt_file_path)
         
@@ -225,6 +280,7 @@ def create_advanced_ass_from_srt(
         output_file = output_dir / f"{srt_path.stem}.ass"
         
         # Load the SRT file
+        logger.debug(f"Loading SRT file: {srt_path}")
         subs = pysubs2.load(str(srt_path), encoding="utf-8")
         
         # Create a new ASS file
@@ -295,13 +351,58 @@ def create_advanced_ass_from_srt(
         ass_subs.styles["Underline"] = underline_style
         ass_subs.styles["Highlight"] = highlight_style
         
+        # Character width calculation constants
+        # These values are based on typical character width ratios in Japanese fonts
+        CHAR_WIDTH_RATIO = {
+            'CJK': 1.0,      # Full-width CJK characters
+            'LATIN': 0.5,    # Half-width Latin characters
+            'DIGIT': 0.5,    # Digits
+            'PUNCT': 0.5,    # Punctuation
+            'SPACE': 0.5     # Space
+        }
+        
+        # Function to estimate character width based on character type
+        def estimate_char_width(char, base_width):
+            if ord(char) >= 0x3000:  # CJK characters and full-width forms
+                return base_width * CHAR_WIDTH_RATIO['CJK']
+            elif char.isalpha():     # Latin alphabet
+                return base_width * CHAR_WIDTH_RATIO['LATIN']
+            elif char.isdigit():     # Digits
+                return base_width * CHAR_WIDTH_RATIO['DIGIT']
+            elif char.isspace():     # Spaces
+                return base_width * CHAR_WIDTH_RATIO['SPACE']
+            else:                    # Punctuation and others
+                return base_width * CHAR_WIDTH_RATIO['PUNCT']
+        
+        # Function to calculate text width
+        def calculate_text_width(text, char_base_width):
+            # Remove HTML tags for width calculation
+            clean_text = re.sub(r'<[^>]+>', '', text)
+            return sum(estimate_char_width(char, char_base_width) for char in clean_text)
+        
+        # Spacing constants
+        CHAR_BASE_WIDTH = font_size * 0.8  # Base width for character sizing
+        RUBY_BASE_WIDTH = ruby_font_size * 0.8  # Base width for ruby character sizing
+        CHAR_SPACING = font_size * 0.2  # Space between characters
+        RUBY_SPACING = ruby_font_size * 0.2  # Space between ruby characters
+        VERTICAL_SPACING = font_size * 1.5  # Vertical spacing between lines
+        
         # Process each subtitle
         for sub in subs:
+            logger.debug(f"Processing subtitle: {sub.text}")
+            
             # Extract furigana pairs from the text
             pairs = extract_furigana_pairs(sub.text, auto_generate_furigana)
+            logger.debug(f"Extracted pairs: {pairs}")
             
-            # Calculate total width of text for centering
-            total_width = sum(len(base) for base, _, _ in pairs) * font_size / 2
+            # Calculate total width for centering
+            total_width = 0
+            for base, furigana, _ in pairs:
+                base_width = calculate_text_width(base, CHAR_BASE_WIDTH)
+                furigana_width = calculate_text_width(furigana, RUBY_BASE_WIDTH) if furigana else 0
+                # Use the wider of the two for positioning
+                segment_width = max(base_width, furigana_width) + CHAR_SPACING
+                total_width += segment_width
             
             # Base position for this subtitle line (centered horizontally)
             base_x = 960 - (total_width / 2)  # 960 is center of 1920 width
@@ -324,14 +425,33 @@ def create_advanced_ass_from_srt(
             # Process each pair
             for i, (base, furigana, is_kanji) in enumerate(pairs):
                 # Calculate width of this text segment
-                char_width = font_size / 2
-                segment_width = len(base) * char_width
+                base_width = calculate_text_width(base, CHAR_BASE_WIDTH)
+                furigana_width = calculate_text_width(furigana, RUBY_BASE_WIDTH) if furigana else 0
                 
-                # Convert HTML color tags to ASS color tags
-                if "<font color=" in base:
-                    color_match = re.search(r'<font color="([^"]+)">', base)
-                    if color_match:
-                        color = color_match.group(1)
+                # Use the wider of the two for positioning
+                segment_width = max(base_width, furigana_width)
+                
+                # Calculate center position for this segment
+                segment_center_x = current_x + (segment_width / 2)
+                
+                # Add main text dialogue
+                pos_tag_main = f"{{\\pos({int(segment_center_x)},{base_y})}}"
+                
+                # Process color tags in the base text
+                processed_text = base
+                
+                # Check if there are font color tags in the text
+                if "<font color=" in processed_text:
+                    logger.debug(f"Found color tags in text: {processed_text}")
+                    # Extract all color tags
+                    color_matches = list(re.finditer(r'<font color="([^"]+)">(.*?)</font>', processed_text))
+                    
+                    # Process each match from end to beginning to avoid index issues
+                    for match in reversed(color_matches):
+                        color = match.group(1)
+                        content = match.group(2)
+                        logger.debug(f"Processing color tag: color={color}, content={content}")
+                        
                         # Convert HTML color to ASS color
                         if color.startswith('#'):
                             r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
@@ -340,66 +460,104 @@ def create_advanced_ass_from_srt(
                             # Map common color names to ASS colors
                             ass_color = COLOR_MAP.get(color.lower(), text_color)
                         
+                        logger.debug(f"Converted color to ASS format: {ass_color}")
+                        
+                        # Create ASS color tag
+                        color_tag_start = f"{{\\c{ass_color}}}"
+                        color_tag_end = "{\\c}"
+                        
                         # Replace the HTML tag with ASS color tag
-                        base = re.sub(r'<font color="[^"]+">(.*?)</font>', r'\1', base)
-                        color_tag = f"{{\\c{ass_color}}}"
-                    else:
-                        color_tag = ""
-                else:
-                    color_tag = ""
+                        processed_text = processed_text[:match.start()] + color_tag_start + content + color_tag_end + processed_text[match.end():]
+                        logger.debug(f"Processed text with color tags: {processed_text}")
                 
-                # Add main text dialogue
-                pos_tag_main = f"{{\\pos({int(current_x)},{base_y})}}"
-                close_color = "{\\c}" if color_tag else ""
+                # Escape curly braces in the processed text to avoid pysubs2 interpreting them as tags
+                # This is necessary because pysubs2 will try to parse any curly braces as ASS tags
+                final_text = pos_tag_main + processed_text
                 
                 main_dialogue = pysubs2.SSAEvent(
                     start=sub.start,
                     end=sub.end,
                     style="Default",
                     layer=layer,
-                    text=f"{pos_tag_main}{color_tag}{base}{close_color}"
+                    text=final_text
                 )
                 ass_subs.events.append(main_dialogue)
+                logger.debug(f"Added main dialogue: {main_dialogue.text}")
                 
                 # Add ruby text if present
                 if furigana:
-                    pos_tag_ruby = f"{{\\pos({int(current_x)},{ruby_y})}}"
+                    # Center ruby text above the base text
+                    ruby_center_x = segment_center_x
+                    pos_tag_ruby = f"{{\\pos({int(ruby_center_x)},{ruby_y})}}"
+                    
+                    # Process color tags for ruby text (use same color as base text if colored)
+                    processed_ruby = furigana
+                    
+                    # Check if there are font color tags in the base text
+                    if "<font color=" in base:
+                        logger.debug(f"Found color tags in base text for ruby: {base}")
+                        # Extract the first color tag
+                        color_match = re.search(r'<font color="([^"]+)">', base)
+                        if color_match:
+                            color = color_match.group(1)
+                            logger.debug(f"Applying color {color} to ruby text")
+                            
+                            # Convert HTML color to ASS color
+                            if color.startswith('#'):
+                                r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+                                ass_color = f"&H{b:02X}{g:02X}{r:02X}&"
+                            else:
+                                # Map common color names to ASS colors
+                                ass_color = COLOR_MAP.get(color.lower(), ruby_color)
+                            
+                            # Apply color to ruby text
+                            processed_ruby = f"{{\\c{ass_color}}}{furigana}{{\\c}}"
+                            logger.debug(f"Processed ruby text with color: {processed_ruby}")
                     
                     ruby_dialogue = pysubs2.SSAEvent(
                         start=sub.start,
                         end=sub.end,
                         style="Ruby",
                         layer=ruby_layer,
-                        text=f"{pos_tag_ruby}{color_tag}{furigana}{close_color}"
+                        text=f"{pos_tag_ruby}{processed_ruby}"
                     )
                     ass_subs.events.append(ruby_dialogue)
+                    logger.debug(f"Added ruby dialogue: {ruby_dialogue.text}")
                     
-                    # Add underline for kanji with furigana (using drawing commands as in example.ass)
+                    # Add underline for kanji with furigana
+                    # Calculate underline width based on the base text width
+                    underline_width = base_width
+                    underline_left = segment_center_x - (underline_width / 2)
+                    underline_right = segment_center_x + (underline_width / 2)
+                    
                     pos_tag = "{\\pos(0,0)}"
                     color_tag = "{\\c&H4E4EF1&}"
                     p1_tag = "{\\p1}"
                     p0_tag = "{\\p0}"
                     c_tag = "{\\c}"
                     
+                    # Create underline with drawing commands
                     underline_dialogue = pysubs2.SSAEvent(
                         start=sub.start,
                         end=sub.end,
                         style="Underline",
                         layer=underline_layer,
-                        text=f"{pos_tag}{color_tag}{p1_tag}m {int(current_x - segment_width/4)} {base_y + 37} l {int(current_x + segment_width/4 + segment_width/2)} {base_y + 37} {int(current_x + segment_width/4 + segment_width/2)} {base_y + 41} {int(current_x - segment_width/4)} {base_y + 41}{p0_tag}{c_tag}"
+                        text=f"{pos_tag}{color_tag}{p1_tag}m {int(underline_left)} {base_y + 37} l {int(underline_right)} {base_y + 37} {int(underline_right)} {base_y + 41} {int(underline_left)} {base_y + 41}{p0_tag}{c_tag}"
                     )
                     ass_subs.events.append(underline_dialogue)
+                    logger.debug(f"Added underline dialogue: {underline_dialogue.text}")
                 
-                # Move to the next position
-                current_x += segment_width
+                # Move to the next position with proper spacing
+                current_x += segment_width + CHAR_SPACING
         
         # Save as ASS file
+        logger.debug(f"Saving ASS file to {output_file}")
         ass_subs.save(str(output_file))
         
         return str(output_file)
         
     except Exception as e:
-        print(f"Error converting {srt_file_path} to ASS: {e}")
+        logger.error(f"Error converting {srt_file_path} to ASS: {e}", exc_info=True)
         raise
 
 def create_ass_from_srt(
