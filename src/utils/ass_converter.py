@@ -19,20 +19,20 @@ logger = logging.getLogger(__name__)
 
 # Default style settings
 DEFAULT_FONT = "MS Gothic"
-DEFAULT_FONT_SIZE = 48
-DEFAULT_RUBY_FONT_SIZE = 24
+DEFAULT_FONT_SIZE = 60
+DEFAULT_RUBY_FONT_SIZE = 36
 DEFAULT_TEXT_COLOR = "&H00FFFFFF"  # White in ASS format
 DEFAULT_RUBY_COLOR = "&H00FFFFFF"  # White in ASS format
 DEFAULT_OUTLINE_COLOR = "&H00000000"  # Black in ASS format
 DEFAULT_SHADOW_COLOR = "&H00000000"  # Black in ASS format
-DEFAULT_OUTLINE_SIZE = 2
-DEFAULT_SHADOW_SIZE = 2
+DEFAULT_OUTLINE_SIZE = 1.5
+DEFAULT_SHADOW_SIZE = 0.5
 
 # Base position for subtitles (center of screen)
 BASE_X = 960  # Center of 1920 width
 BASE_Y_BOTTOM = 1011  # Bottom line position from example.ass
-BASE_Y_TOP = 903  # Top line position from example.ass
-RUBY_Y_OFFSET = -47  # How much higher the ruby text should be
+BASE_Y_TOP = 933  # Adjusted from 903 to bring furigana closer to main text
+RUBY_Y_OFFSET = -35  # Adjusted from -47 to bring furigana closer
 
 # Color mapping for common colors (matching example.ass)
 COLOR_MAP = {
@@ -275,9 +275,10 @@ def create_advanced_ass_from_srt(
             backcolor=convert_html_to_ass_color(shadow_color),
             outline=outline_size,
             shadow=shadow_size,
-            marginl=0,
-            marginr=0,
-            marginv=0,
+            bold=False,
+            marginl=20,
+            marginr=20,
+            marginv=30,  # Increased vertical margin
             alignment=5  # Center-middle alignment
         )
         
@@ -288,11 +289,12 @@ def create_advanced_ass_from_srt(
             secondarycolor=convert_html_to_ass_color(ruby_color),
             outlinecolor=convert_html_to_ass_color(outline_color),
             backcolor=convert_html_to_ass_color(shadow_color),
-            outline=outline_size,
+            outline=outline_size - 1,  # Slightly thinner outline for ruby
             shadow=shadow_size,
-            marginl=0,
-            marginr=0,
-            marginv=0,
+            bold=False,  # Keep ruby text regular weight
+            marginl=20,
+            marginr=20,
+            marginv=20,
             alignment=5  # Center-middle alignment
         )
         
@@ -303,6 +305,10 @@ def create_advanced_ass_from_srt(
             secondarycolor="&H4E4EF1&",
             outline=0,
             shadow=0,
+            bold=False,
+            marginl=0,
+            marginr=0,
+            marginv=0,
             alignment=7  # Left-top alignment for positioning
         )
         
@@ -455,7 +461,7 @@ def create_advanced_ass_from_srt(
                         end=sub.end,
                         style="Underline",
                         layer=underline_layer,
-                        text=f"{pos_tag}{color_tag}{p1_tag}m {int(underline_left)} {BASE_Y_TOP + 37} l {int(underline_right)} {BASE_Y_TOP + 37} {int(underline_right)} {BASE_Y_TOP + 41} {int(underline_left)} {BASE_Y_TOP + 41}{p0_tag}{c_tag}"
+                        text=f"{pos_tag}{color_tag}{p1_tag}m {int(underline_left)} {BASE_Y_TOP + 45} l {int(underline_right)} {BASE_Y_TOP + 45} {int(underline_right)} {BASE_Y_TOP + 47} {int(underline_left)} {BASE_Y_TOP + 47}{p0_tag}{c_tag}"
                     )
                     ass_subs.events.append(underline_dialogue)
                     logger.debug(f"Added underline dialogue: {underline_dialogue.text}")

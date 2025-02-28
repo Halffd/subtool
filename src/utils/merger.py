@@ -84,60 +84,90 @@ class Merger():
     def _set_subtitle_style(self, subtitle, color=None, size=None):
         """
         Apply style (color and size) to subtitle text
+        
+        Args:
+            subtitle (str): The subtitle text
+            color (str): Color in HTML format (#RRGGBB) or color name
+            size (int): Font size in pixels
+            
+        Returns:
+            str: Styled subtitle text with font tags
         """
-        styled_text = subtitle
+        # Split text into lines and process each line
+        lines = subtitle.strip().split('\n')
+        styled_lines = []
         
-        # Add font size if specified
-        if size:
-            styled_text = f'{{\\fs{size}}}{styled_text}'
+        for line in lines:
+            if not line.strip():
+                continue
+                
+            # Create opening font tag with both size and color if specified
+            font_attrs = []
+            if size is not None:  # Check for None specifically since 0 is a valid size
+                font_attrs.append(f'size="{size}"')
+            if color:
+                font_attrs.append(f'color="{color}"')
+                
+            if font_attrs:
+                # Combine all font attributes into a single font tag
+                font_tag = f'<font {" ".join(font_attrs)}>'
+                styled_lines.append(f'{font_tag}{line.strip()}</font>')
+            else:
+                styled_lines.append(line.strip())
         
-        # Add color if specified
-        if color:
-            styled_text = f'<font color="{color}">{styled_text}</font>'
-        
-        return styled_text
+        # Join lines with newlines and add final newline
+        return '\n'.join(styled_lines) + '\n'
 
     def _split_dialogs(self, dialogs, subtitle, color=None, size=None, top=False):
+        """Split and process subtitle dialogs with styling."""
         for dialog in dialogs:
+            # Clean up dialog text
             if dialog.startswith('\r\n'):
                 dialog = dialog.replace('\r\n', '', 1)
             if dialog.startswith('\n'):
                 dialog = dialog[1:]
             if dialog == '' or dialog == '\n' or dialog.rstrip().lstrip() == '':
                 continue
+                
             try:
+                # Extract timestamp
                 if dialog.startswith('\r\n'):
                     dialog = dialog[2:]
                 time = dialog.split('\n', 2)[1].split('-->')[0].split(',')[0]
+                timestamp = datetime.datetime.strptime(time, '%H:%M:%S').timestamp()
+                
+                # Extract text content
+                text_and_time = dialog.split('\n', 1)[1]
+                texts = text_and_time.split('\n')[1:]
+                time = text_and_time.split('\n')[0]
+                
+                # Combine text lines
+                text = '\n'.join(line for line in texts if line.strip())
+                if not text:
+                    continue
+                
+                # Apply style (color and size) to text
+                text = self._set_subtitle_style(text, color, size)
+                
+                # Add position if needed
+                if top:
+                    text = self._put_subtitle_top(text)
+                    
+                # Format final text with timestamp
+                text_and_time = f'{time}\n{text}'
+                
+                # Handle multiple dialogs at same timestamp
+                prev_dialog = subtitle['dialogs'].get(timestamp, '')
+                prev_dialog_without_timestamp = re.sub(TIME_PATTERN, '', prev_dialog)
+                
+                if re.findall(TIME_PATTERN, text_and_time):
+                    time = re.findall(TIME_PATTERN, text_and_time)[0]
+                    
+                subtitle['dialogs'][timestamp] = text_and_time + prev_dialog_without_timestamp
+                self.timestamps.append(timestamp)
+                
             except Exception as e:
                 continue
-            timestamp = datetime.datetime.strptime(
-                time, '%H:%M:%S').timestamp()
-            text_and_time = dialog.split('\n', 1)[1]
-            texts = text_and_time.split('\n')[1:]
-            time = text_and_time.split('\n')[0]
-            text = ""
-            for t in texts:
-                text += t + '\n'
-            if text == '' or text == '\n':
-                continue
-            
-            # Apply style (color and size) to text
-            text = self._set_subtitle_style(text, color, size)
-            
-            if top is True:
-                text = self._put_subtitle_top(text)
-            text_and_time = '%s\n%s\n' % (time, text)
-            # Previous dialog for same timestamp
-            prev_dialog_for_same_timestamp = subtitle['dialogs'][timestamp] = subtitle['dialogs'].get(
-                timestamp, '')
-            prev_dialog_without_timestamp = re.sub(
-                TIME_PATTERN, '', prev_dialog_for_same_timestamp)
-            if re.findall(TIME_PATTERN, text_and_time):
-                time = re.findall(TIME_PATTERN, text_and_time)[0]
-            subtitle['dialogs'][timestamp] = text_and_time + \
-                prev_dialog_without_timestamp
-            self.timestamps.append(timestamp)
 
     def _encode(self, text):
         codec = self.output_encoding

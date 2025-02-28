@@ -214,7 +214,7 @@ class SingleFilesTab(BaseTab):
             return subtitle_path
 
     def merge_subtitles(self):
-        """Merge the selected subtitle files."""
+        """Merge the selected subtitle files and convert to ASS if enabled."""
         try:
             sub1_file = self.sub1_entry.text()
             sub2_file = self.sub2_entry.text()
@@ -229,33 +229,6 @@ class SingleFilesTab(BaseTab):
             # Create output path
             output_path = Path(sub1_file).parent
             base_name = Path(sub1_file).stem
-            
-            # Check if ASS conversion is enabled
-            if self.option_convert_to_ass.isChecked():
-                self.logger.info("ASS conversion with furigana is enabled")
-                try:
-                    # Get style settings
-                    style_kwargs = {
-                        'font': "MS Gothic",  # Japanese font
-                        'font_size': self.sub1_font_slider.value(),
-                        'ruby_font_size': self.sub1_font_slider.value() // 2,  # Half the size for ruby
-                        'text_color': self.color_combo.currentText(),
-                        'auto_generate_furigana': True,  # Use automatic furigana generation
-                        'advanced_styling': True  # Use advanced styling with separate dialogue entries
-                    }
-                    
-                    # Convert the first subtitle file to ASS
-                    ass_file = create_ass_from_srt(
-                        srt_file_path=sub1_file,
-                        output_dir=str(output_path),
-                        **style_kwargs
-                    )
-                    
-                    self.logger.info(f"Successfully converted {sub1_file} to ASS format with furigana: {ass_file}")
-                    return
-                except Exception as e:
-                    self.logger.error(f"Error during ASS conversion: {e}")
-                    # Continue with normal merge if ASS conversion fails
             
             # Create merger instance
             merger = Merger(
@@ -282,8 +255,37 @@ class SingleFilesTab(BaseTab):
                 time_offset=self.sub2_sync_spinbox.value()
             )
             
+            # Merge subtitles
             merger.merge()
-            self.logger.info(f"Successfully merged subtitles to: {output_path}")
+            merged_srt_path = merger.get_output_path()
+            self.logger.info(f"Successfully merged subtitles to: {merged_srt_path}")
+            
+            # Convert to ASS if enabled
+            if self.option_convert_to_ass.isChecked():
+                self.logger.info("Converting merged SRT to ASS with furigana...")
+                try:
+                    # Get style settings
+                    style_kwargs = {
+                        'font': "MS Gothic",  # Japanese font
+                        'font_size': self.sub1_font_slider.value(),
+                        'ruby_font_size': self.sub1_font_slider.value() // 2,  # Half the size for ruby
+                        'text_color': self.color_combo.currentText(),
+                        'outline_size': 1.5,  # Thinner outline
+                        'shadow_size': 0.5,  # Subtle shadow
+                        'auto_generate_furigana': True,  # Use automatic furigana generation
+                        'advanced_styling': True  # Use advanced styling with separate dialogue entries
+                    }
+                    
+                    # Convert the merged SRT file to ASS
+                    ass_file = create_ass_from_srt(
+                        srt_file_path=merged_srt_path,
+                        output_dir=str(output_path),
+                        **style_kwargs
+                    )
+                    
+                    self.logger.info(f"Successfully converted to ASS format with furigana: {ass_file}")
+                except Exception as e:
+                    self.logger.error(f"Error during ASS conversion: {e}")
             
         except Exception as e:
             self.logger.error(f"Error during merge operation: {e}")

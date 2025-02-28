@@ -251,7 +251,7 @@ class DirectoryTab(BaseTab):
             QMessageBox.critical(self, "Error", f"Error testing patterns: {e}")
 
     def merge_subtitles(self):
-        """Merge the subtitle files in directory."""
+        """Merge the subtitle files in directory and generate up to 4 subtitle files."""
         try:
             input_dir = self.dir_entry.text().strip()
             video_dir = self.video_dir_entry.text().strip()
@@ -266,35 +266,6 @@ class DirectoryTab(BaseTab):
             self.logger.info("Starting merge operation...")
             self.logger.info(f"Input directory: {input_dir}")
             self.logger.info(f"Video directory: {video_dir}")
-            
-            # Check if ASS conversion is enabled
-            convert_to_ass = self.option_convert_to_ass.isChecked()
-            if convert_to_ass:
-                self.logger.info("ASS conversion with furigana is enabled")
-                # Process the directory to convert SRT files to ASS
-                try:
-                    # Get style settings
-                    style_kwargs = {
-                        'font': "MS Gothic",  # Japanese font
-                        'font_size': self.sub1_font_slider.value(),
-                        'ruby_font_size': self.sub1_font_slider.value() // 2,  # Half the size for ruby
-                        'text_color': self.color_combo.currentText(),
-                        'auto_generate_furigana': True,  # Use automatic furigana generation
-                        'advanced_styling': True  # Use advanced styling with separate dialogue entries
-                    }
-                    
-                    # Process the directory
-                    ass_files = process_ass_directory(
-                        input_dir=input_dir,
-                        output_dir=video_dir,
-                        **style_kwargs
-                    )
-                    
-                    self.logger.info(f"Successfully converted {len(ass_files)} SRT files to ASS format with furigana")
-                    return
-                except Exception as e:
-                    self.logger.error(f"Error during ASS conversion: {e}")
-                    # Continue with normal merge if ASS conversion fails
             
             # Get patterns from GUI entries
             sub1_pattern = self.sub1_pattern_entry.text()
@@ -332,14 +303,6 @@ class DirectoryTab(BaseTab):
                 
                 self.logger.info(f"Found {len(sub1_files)} sub1 files and {len(sub2_files)} sub2 files")
                 
-                # Log matched files
-                self.logger.debug("Sub1 matched files:")
-                for f in sub1_files:
-                    self.logger.debug(f"  - {f.name}")
-                self.logger.debug("Sub2 matched files:")
-                for f in sub2_files:
-                    self.logger.debug(f"  - {f.name}")
-                
             except Exception as e:
                 self.logger.error(f"Error finding subtitle files: {e}")
                 return
@@ -351,7 +314,6 @@ class DirectoryTab(BaseTab):
             for sub1 in sub1_files:
                 try:
                     ep_match = re.search(sub1_ep_pattern, sub1.stem)
-                    self.logger.debug(f"{ep_match} - {sub1}")
                     if ep_match:
                         ep_num = ep_match.group(1)
                         if ep_num not in episode_subs:
@@ -368,7 +330,6 @@ class DirectoryTab(BaseTab):
             for sub2 in sub2_files:
                 try:
                     ep_match = re.search(sub2_ep_pattern, sub2.stem)
-                    self.logger.debug(f"{ep_match} - {sub2}")
                     if ep_match:
                         ep_num = ep_match.group(1)
                         if ep_num in episode_subs:
@@ -380,13 +341,6 @@ class DirectoryTab(BaseTab):
                         self.logger.warning(f"Could not extract episode number from sub2 file: {sub2.name}")
                 except Exception as e:
                     self.logger.error(f"Error processing sub2 file {sub2}: {e}")
-
-            # Log episode pairs
-            self.logger.debug("Episode pairs found:")
-            for ep_num, subs in episode_subs.items():
-                sub1_name = subs.get('sub1', 'missing').name if 'sub1' in subs else 'missing'
-                sub2_name = subs.get('sub2', 'missing').name if 'sub2' in subs else 'missing'
-                self.logger.debug(f"Episode {ep_num}: sub1={sub1_name}, sub2={sub2_name}")
 
             # Find and process video files - only look for MKV files
             video_files = [f for f in Path(video_dir).glob('**/*.mkv')]
@@ -426,8 +380,6 @@ class DirectoryTab(BaseTab):
                         shutil.copy2(sub1_file, sub1_dest)
                         shutil.copy2(sub2_file, sub2_dest)
                         self.logger.info(f"Copied subtitle files for episode {ep_num}")
-                        self.logger.debug(f"  - {sub1_file.name} -> {sub1_dest.name}")
-                        self.logger.debug(f"  - {sub2_file.name} -> {sub2_dest.name}")
                     except Exception as e:
                         self.logger.error(f"Error copying subtitle files for episode {ep_num}: {e}")
                         continue
@@ -455,8 +407,61 @@ class DirectoryTab(BaseTab):
                         size=self.sub2_font_slider.value()
                     )
                     
+                    # Merge subtitles to create the merged SRT file
                     merger.merge()
+                    merged_srt_path = merger.get_output_path()
                     self.logger.info(f"Successfully merged subtitles for episode {ep_num}")
+
+                    # Generate ASS files if enabled
+                    if self.option_convert_to_ass.isChecked():
+                        try:
+                            # Base style settings
+                            base_style = {
+                                'font': "MS Gothic",  # Japanese font
+                                'font_size': self.sub1_font_slider.value(),
+                                'ruby_font_size': self.sub1_font_slider.value() // 2,  # Half the size for ruby
+                                'text_color': self.color_combo.currentText(),
+                                'outline_size': 1.5,  # Thinner outline
+                                'shadow_size': 0.5,  # Subtle shadow
+                            }
+
+                            # 1. Basic ASS with furigana
+                            basic_ass_path = str(video_file.parent / f'{video_file.stem}.basic.ass')
+                            create_ass_from_srt(
+                                srt_file_path=merged_srt_path,
+                                output_path=basic_ass_path,
+                                auto_generate_furigana=True,
+                                advanced_styling=False,
+                                **base_style
+                            )
+                            self.logger.info(f"Created basic ASS with furigana for episode {ep_num}")
+
+                            # 2. ASS with furigana and colors
+                            color_ass_path = str(video_file.parent / f'{video_file.stem}.color.ass')
+                            create_ass_from_srt(
+                                srt_file_path=merged_srt_path,
+                                output_path=color_ass_path,
+                                auto_generate_furigana=True,
+                                advanced_styling=False,
+                                use_colors=True,
+                                **base_style
+                            )
+                            self.logger.info(f"Created colored ASS with furigana for episode {ep_num}")
+
+                            # 3. ASS with advanced styling
+                            advanced_ass_path = str(video_file.parent / f'{video_file.stem}.advanced.ass')
+                            create_ass_from_srt(
+                                srt_file_path=merged_srt_path,
+                                output_path=advanced_ass_path,
+                                auto_generate_furigana=True,
+                                advanced_styling=True,
+                                use_colors=True,
+                                **base_style
+                            )
+                            self.logger.info(f"Created advanced ASS with furigana for episode {ep_num}")
+
+                        except Exception as e:
+                            self.logger.error(f"Error creating ASS files for episode {ep_num}: {e}")
                     
                 except Exception as e:
                     self.logger.error(f"Error processing video file {video_file}: {e}")
