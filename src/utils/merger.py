@@ -52,10 +52,28 @@ class Merger():
 
     def _set_subtitle_color(self, subtitle, color):
         """
-        Set a color for subtitle
+        Set a color for subtitle text.
+        
+        Args:
+            subtitle (str): The subtitle text
+            color (str): Color in HTML format (#RRGGBB) or color name
+            
+        Returns:
+            str: Subtitle text with ASS color tags
         """
-        return '<font color="{!s}">{!s}</font>'.format(
-            color, subtitle) if color else subtitle
+        if not color:
+            return subtitle
+        
+        # Convert hex color to ASS format (BGR)
+        if color.startswith('#'):
+            r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+            ass_color = f"&H{b:02X}{g:02X}{r:02X}&"
+        else:
+            # Use predefined color mapping
+            ass_color = color
+        
+        # Add ASS color tags
+        return f"{{\\c{ass_color}}}{subtitle}{{\\c}}"
 
     def _put_subtitle_top(self, subtitle):
         """
