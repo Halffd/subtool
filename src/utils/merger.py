@@ -197,13 +197,30 @@ class Merger():
             'size': size,
             'dialogs': {}
         }
-        with open(subtitle_address, 'r') as file:
-            data = file.buffer.read().decode(codec)
-            dialogs = re.split('\r\n\r|\n\n', data)
-            subtitle['data'] = data
-            subtitle['raw_dialogs'] = dialogs
-            self._split_dialogs(dialogs, subtitle, color, size, top)
-            self.subtitles.append(subtitle)
+        
+        # List of encodings to try
+        encodings = [codec, 'utf-8', 'utf-8-sig', 'cp932', 'shift_jis', 'euc_jp', 'iso2022_jp']
+        
+        for encoding in encodings:
+            try:
+                with open(subtitle_address, 'rb') as file:
+                    data = file.read()
+                    try:
+                        decoded_data = data.decode(encoding)
+                        subtitle['codec'] = encoding  # Update codec to the one that worked
+                        dialogs = re.split('\r\n\r|\n\n', decoded_data)
+                        subtitle['data'] = decoded_data
+                        subtitle['raw_dialogs'] = dialogs
+                        self._split_dialogs(dialogs, subtitle, color, size, top)
+                        self.subtitles.append(subtitle)
+                        return  # Successfully read file, exit function
+                    except UnicodeDecodeError:
+                        continue
+            except Exception as e:
+                continue
+                
+        # If we get here, none of the encodings worked
+        raise ValueError(f"Could not decode subtitle file {subtitle_address} with any of the supported encodings")
 
     def get_output_path(self):
         if self.output_path.endswith('/'):
