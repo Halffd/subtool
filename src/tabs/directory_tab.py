@@ -1,5 +1,6 @@
 import re
 import shutil
+import subprocess
 from pathlib import Path
 import datetime
 from typing import List
@@ -9,7 +10,7 @@ from PyQt5.QtWidgets import (
 )
 from .base_tab import BaseTab
 from ..utils.merger import Merger, WHITE
-from ..utils.ass_converter import process_directory as process_ass_directory
+from ..utils.ass_converter import create_ass_from_srt, process_directory as process_ass_directory
 
 class DirectoryTab(BaseTab):
     """Tab for processing directories."""
@@ -251,7 +252,7 @@ class DirectoryTab(BaseTab):
             QMessageBox.critical(self, "Error", f"Error testing patterns: {e}")
 
     def merge_subtitles(self):
-        """Merge the subtitle files in directory and generate up to 4 subtitle files."""
+        """Merge subtitle files in the directory based on patterns."""
         try:
             input_dir = self.dir_entry.text().strip()
             video_dir = self.video_dir_entry.text().strip()
@@ -281,6 +282,62 @@ class DirectoryTab(BaseTab):
             self.logger.debug(f"Using patterns - Sub1: {sub1_pattern}, Sub2: {sub2_pattern}")
             self.logger.debug(f"Episode patterns - Sub1: {sub1_ep_pattern}, Sub2: {sub2_ep_pattern}")
             self.logger.debug(f"Styles - Sub1: color={sub1_color}, size={sub1_size}, Sub2: size={sub2_size}")
+
+            def extract_episode_info(filename: str, primary_pattern: str = None) -> tuple[str, str]:
+                """
+                Extract season and episode numbers using multiple pattern attempts.
+                Returns (season_num, episode_num) or (None, None) if no match found.
+                """
+                # Check if filename contains "E" pattern
+                has_e_pattern = 'E' in filename.upper()
+                
+                # Try user-provided pattern first if available
+                if primary_pattern:
+                    try:
+                        match = re.search(primary_pattern, filename)
+                        if match:
+                            # Assume it's just episode number if one group
+                            if len(match.groups()) == 1:
+                                # If filename has "E" pattern but pattern doesn't capture season, try to find it
+                                if has_e_pattern:
+                                    season_match = re.search(r'S(\d+)', filename)
+                                    season_num = season_match.group(1) if season_match else '1'
+                                    return season_num, match.group(1)
+                                return '1', match.group(1)
+                            # Assume season and episode if two groups
+                            elif len(match.groups()) == 2:
+                                return match.group(1), match.group(2)
+                    except re.error:
+                        self.logger.warning(f"Invalid user pattern: {primary_pattern}")
+
+                # List of patterns to try, in order of preference
+                patterns = [
+                    # Standard season/episode format
+                    (r'S(\d+)E(\d+)', lambda m: (m.group(1), m.group(2))),
+                    # Season and episode separated
+                    (r'S(\d+)[^E]*?(\d{2,3})', lambda m: (m.group(1), m.group(2))),
+                ]
+
+                # If filename has "E" pattern, only use patterns that extract season numbers
+                if not has_e_pattern:
+                    # Add fallback patterns only if no "E" in filename
+                    patterns.extend([
+                        # Just episode number with optional season
+                        (r'(?:S(\d+)|S)?.*?(\d{2,3})', lambda m: (m.group(1) or '1', m.group(2))),
+                        # Any number sequence as last resort
+                        (r'(\d{2,3})', lambda m: ('1', m.group(1)))
+                    ])
+
+                # Try each pattern in sequence
+                for pattern, extractor in patterns:
+                    match = re.search(pattern, filename)
+                    if match:
+                        try:
+                            return extractor(match)
+                        except Exception:
+                            continue
+
+                return None, None
             
             # Find subtitle files (case insensitive)
             try:
@@ -293,15 +350,24 @@ class DirectoryTab(BaseTab):
                 for srt_file in all_srt_files:
                     self.logger.debug(f"Found SRT file: {srt_file.name}")
                 
-                # Filter sub1 files using regex pattern from GUI
+                # First find sub1 files
                 sub1_files = [f for f in all_srt_files 
                             if re.search(sub1_pattern, f.name, re.IGNORECASE)]
                 
-                # Filter sub2 files using regex pattern from GUI
+                # Then find sub2 files, excluding any that matched sub1
                 sub2_files = [f for f in all_srt_files
-                            if re.search(sub2_pattern, f.name, re.IGNORECASE)]
+                            if re.search(sub2_pattern, f.name, re.IGNORECASE) 
+                            and f not in sub1_files]
                 
                 self.logger.info(f"Found {len(sub1_files)} sub1 files and {len(sub2_files)} sub2 files")
+                
+                # Log matched files
+                self.logger.debug("Sub1 matched files:")
+                for f in sub1_files:
+                    self.logger.debug(f"  - {f.name}")
+                self.logger.debug("Sub2 matched files:")
+                for f in sub2_files:
+                    self.logger.debug(f"  - {f.name}")
                 
             except Exception as e:
                 self.logger.error(f"Error finding subtitle files: {e}")
@@ -313,32 +379,58 @@ class DirectoryTab(BaseTab):
             # Process sub1 files
             for sub1 in sub1_files:
                 try:
-                    ep_match = re.search(sub1_ep_pattern, sub1.stem)
-                    if ep_match:
-                        ep_num = ep_match.group(1)
-                        if ep_num not in episode_subs:
-                            episode_subs[ep_num] = {'sub1': sub1}
-                            self.logger.debug(f"Found sub1 for episode {ep_num}: {sub1.name}")
+                    season_num, ep_num = extract_episode_info(sub1.stem, sub1_ep_pattern)
+                    
+                    if season_num is not None and ep_num is not None:
+                        # Create a unique key combining season and episode
+                        ep_key = f"S{season_num}E{ep_num}"
+                        
+                        if ep_key not in episode_subs:
+                            episode_subs[ep_key] = {
+                                'sub1': sub1, 
+                                'season': season_num, 
+                                'episode': ep_num,
+                                'has_e_pattern': 'E' in sub1.stem.upper()
+                            }
+                            self.logger.debug(f"Found sub1 for {ep_key}: {sub1.name}")
                         else:
-                            self.logger.warning(f"Duplicate sub1 for episode {ep_num}: {sub1.name}")
+                            self.logger.warning(f"Duplicate sub1 for {ep_key}: {sub1.name}")
                     else:
-                        self.logger.warning(f"Could not extract episode number from sub1 file: {sub1.name}")
+                        self.logger.warning(f"Could not extract episode info from sub1 file: {sub1.name}")
                 except Exception as e:
                     self.logger.error(f"Error processing sub1 file {sub1}: {e}")
             
             # Process sub2 files
             for sub2 in sub2_files:
                 try:
-                    ep_match = re.search(sub2_ep_pattern, sub2.stem)
-                    if ep_match:
-                        ep_num = ep_match.group(1)
-                        if ep_num in episode_subs:
-                            episode_subs[ep_num]['sub2'] = sub2
-                            self.logger.debug(f"Found sub2 for episode {ep_num}: {sub2.name}")
+                    season_num, ep_num = extract_episode_info(sub2.stem, sub2_ep_pattern)
+                    
+                    if season_num is not None and ep_num is not None:
+                        ep_key = f"S{season_num}E{ep_num}"
+                        
+                        if ep_key in episode_subs:
+                            # If either file has E pattern, require season numbers to match
+                            if (episode_subs[ep_key].get('has_e_pattern', False) or 
+                                'E' in sub2.stem.upper()):
+                                if episode_subs[ep_key]['season'] != season_num:
+                                    self.logger.warning(
+                                        f"Season number mismatch for {ep_key}: "
+                                        f"sub1 season={episode_subs[ep_key]['season']}, "
+                                        f"sub2 season={season_num}"
+                                    )
+                                    continue
+                            episode_subs[ep_key]['sub2'] = sub2
+                            self.logger.debug(f"Found sub2 for {ep_key}: {sub2.name}")
                         else:
-                            self.logger.warning(f"Found sub2 but no sub1 for episode {ep_num}: {sub2.name}")
+                            episode_subs[ep_key] = {
+                                'sub2': sub2, 
+                                'season': season_num, 
+                                'episode': ep_num,
+                                'has_e_pattern': 'E' in sub2.stem.upper()
+                            }
+                            self.logger.warning(f"Found sub2 but no sub1 for {ep_key}: {sub2.name}")
                     else:
-                        self.logger.warning(f"Could not extract episode number from sub2 file: {sub2.name}")
+                        self.logger.warning(f"Could not extract episode info from sub2 file: {sub2.name}")
                 except Exception as e:
                     self.logger.error(f"Error processing sub2 file {sub2}: {e}")
 
@@ -351,27 +443,30 @@ class DirectoryTab(BaseTab):
             for video_file in video_files:
                 self.logger.debug(f"Found video file: {video_file.name}")
                 try:
-                    # Extract episode number using the sub2 episode pattern
-                    match = re.search(sub2_ep_pattern, video_file.stem)
-                    if not match:
-                        match = re.search(r'(\d+)', video_file.stem)
-                        if not match:
-                            self.logger.warning(f"Could not find episode number in {video_file.name}")
-                            continue
+                    season_num, ep_num = extract_episode_info(video_file.stem)
                     
-                    ep_num = match.group(1)  # Get the episode number
-                    self.logger.debug(f"Extracted episode number {ep_num} from {video_file.name}")
-                    
-                    if ep_num not in episode_subs:
-                        self.logger.warning(f"No subtitles found for episode {ep_num}")
-                        continue
-                    if 'sub2' not in episode_subs[ep_num]:
-                        self.logger.warning(f"Missing sub2 for episode {ep_num}")
+                    if season_num is None or ep_num is None:
+                        self.logger.warning(f"Could not extract episode info from {video_file.name}")
                         continue
                     
-                    sub1_file = episode_subs[ep_num]['sub1']
-                    sub2_file = episode_subs[ep_num]['sub2']
-                    self.logger.debug(f"Processing episode {ep_num} with sub1={sub1_file.name}, sub2={sub2_file.name}")
+                    ep_key = f"S{season_num}E{ep_num}"
+                    self.logger.debug(f"Extracted {ep_key} from {video_file.name}")
+                    
+                    if ep_key not in episode_subs:
+                        self.logger.warning(f"No subtitles found for {ep_key}")
+                        continue
+                    if 'sub2' not in episode_subs[ep_key]:
+                        self.logger.warning(f"Missing sub2 for {ep_key}")
+                        continue
+                    
+                    sub1_file = episode_subs[ep_key].get('sub1')
+                    sub2_file = episode_subs[ep_key].get('sub2')
+                    
+                    if not sub1_file:
+                        self.logger.warning(f"Missing sub1 for {ep_key}")
+                        continue
+                    
+                    self.logger.debug(f"Processing {ep_key} with sub1={sub1_file.name}, sub2={sub2_file.name}")
                     
                     # Copy subtitle files next to video with consistent naming
                     try:
@@ -379,9 +474,9 @@ class DirectoryTab(BaseTab):
                         sub2_dest = video_file.parent / f'{video_file.stem}.sub2.srt'
                         shutil.copy2(sub1_file, sub1_dest)
                         shutil.copy2(sub2_file, sub2_dest)
-                        self.logger.info(f"Copied subtitle files for episode {ep_num}")
+                        self.logger.info(f"Copied subtitle files for {ep_key}")
                     except Exception as e:
-                        self.logger.error(f"Error copying subtitle files for episode {ep_num}: {e}")
+                        self.logger.error(f"Error copying subtitle files for {ep_key}: {e}")
                         continue
                     
                     # Create merger instance for this episode
@@ -410,7 +505,7 @@ class DirectoryTab(BaseTab):
                     # Merge subtitles to create the merged SRT file
                     merger.merge()
                     merged_srt_path = merger.get_output_path()
-                    self.logger.info(f"Successfully merged subtitles for episode {ep_num}")
+                    self.logger.info(f"Successfully merged subtitles for {ep_key}")
 
                     # Generate ASS files if enabled
                     if self.option_convert_to_ass.isChecked():
@@ -434,7 +529,7 @@ class DirectoryTab(BaseTab):
                                 advanced_styling=False,
                                 **base_style
                             )
-                            self.logger.info(f"Created basic ASS with furigana for episode {ep_num}")
+                            self.logger.info(f"Created basic ASS with furigana for {ep_key}")
 
                             # 2. ASS with furigana and colors
                             color_ass_path = str(video_file.parent / f'{video_file.stem}.color.ass')
@@ -446,7 +541,7 @@ class DirectoryTab(BaseTab):
                                 use_colors=True,
                                 **base_style
                             )
-                            self.logger.info(f"Created colored ASS with furigana for episode {ep_num}")
+                            self.logger.info(f"Created colored ASS with furigana for {ep_key}")
 
                             # 3. ASS with advanced styling
                             advanced_ass_path = str(video_file.parent / f'{video_file.stem}.advanced.ass')
@@ -458,10 +553,10 @@ class DirectoryTab(BaseTab):
                                 use_colors=True,
                                 **base_style
                             )
-                            self.logger.info(f"Created advanced ASS with furigana for episode {ep_num}")
+                            self.logger.info(f"Created advanced ASS with furigana for {ep_key}")
 
                         except Exception as e:
-                            self.logger.error(f"Error creating ASS files for episode {ep_num}: {e}")
+                            self.logger.error(f"Error creating ASS files for {ep_key}: {e}")
                     
                 except Exception as e:
                     self.logger.error(f"Error processing video file {video_file}: {e}")

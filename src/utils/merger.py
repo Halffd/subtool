@@ -100,20 +100,44 @@ class Merger():
         for line in lines:
             if not line.strip():
                 continue
+            
+            # If line already has font tags, extract existing attributes
+            font_match = re.match(r'<font([^>]*)>(.*?)</font>', line.strip())
+            if font_match:
+                existing_attrs = font_match.group(1)
+                line_content = font_match.group(2)
                 
-            # Create opening font tag with both size and color if specified
-            font_attrs = []
-            if size is not None:  # Check for None specifically since 0 is a valid size
-                font_attrs.append(f'size="{size}"')
-            if color:
-                font_attrs.append(f'color="{color}"')
+                # Parse existing attributes
+                existing_size = re.search(r'size="(\d+)"', existing_attrs)
+                existing_color = re.search(r'color="([^"]+)"', existing_attrs)
                 
-            if font_attrs:
-                # Combine all font attributes into a single font tag
-                font_tag = f'<font {" ".join(font_attrs)}>'
-                styled_lines.append(f'{font_tag}{line.strip()}</font>')
+                # Use provided values or fallback to existing ones
+                current_size = size if size is not None else (int(existing_size.group(1)) if existing_size else None)
+                current_color = color if color is not None else (existing_color.group(1) if existing_color else None)
+                
+                # Create new font tag with combined attributes
+                font_attrs = []
+                if current_size is not None:
+                    font_attrs.append(f'size="{current_size}"')
+                if current_color:
+                    font_attrs.append(f'color="{current_color}"')
+                
+                if font_attrs:
+                    styled_lines.append(f'<font {" ".join(font_attrs)}>{line_content}</font>')
+                else:
+                    styled_lines.append(line_content)
             else:
-                styled_lines.append(line.strip())
+                # Line doesn't have font tags, add new ones
+                font_attrs = []
+                if size is not None:
+                    font_attrs.append(f'size="{size}"')
+                if color:
+                    font_attrs.append(f'color="{color}"')
+                
+                if font_attrs:
+                    styled_lines.append(f'<font {" ".join(font_attrs)}>{line.strip()}</font>')
+                else:
+                    styled_lines.append(line.strip())
         
         # Join lines with newlines and add final newline
         return '\n'.join(styled_lines) + '\n'
