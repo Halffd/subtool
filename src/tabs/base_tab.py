@@ -579,7 +579,7 @@ class BaseTab(QWidget):
 
     def setup_subtitle_sizes(self):
         """Setup subtitle font size controls."""
-        font_group = QGroupBox("Subtitle Font Sizes")
+        font_group = QGroupBox("Subtitle Font Sizes and Thickness")
         font_layout = QVBoxLayout()
         
         # Sub1 font size
@@ -603,6 +603,14 @@ class BaseTab(QWidget):
         sub1_layout.addWidget(self.sub1_font_slider)
         sub1_layout.addWidget(self.sub1_font_spinbox)
         
+        # Sub1 thickness
+        sub1_thickness_layout = QHBoxLayout()
+        sub1_thickness_layout.addWidget(QLabel("Sub1 Thickness:"))
+        
+        self.sub1_thickness_checkbox = QCheckBox("Bold")
+        self.sub1_thickness_checkbox.setChecked(self.settings.get('sub1_bold', False))
+        sub1_thickness_layout.addWidget(self.sub1_thickness_checkbox)
+        
         # Sub2 font size
         sub2_layout = QHBoxLayout()
         sub2_layout.addWidget(QLabel("Sub2 Font Size:"))
@@ -624,8 +632,18 @@ class BaseTab(QWidget):
         sub2_layout.addWidget(self.sub2_font_slider)
         sub2_layout.addWidget(self.sub2_font_spinbox)
         
+        # Sub2 thickness
+        sub2_thickness_layout = QHBoxLayout()
+        sub2_thickness_layout.addWidget(QLabel("Sub2 Thickness:"))
+        
+        self.sub2_thickness_checkbox = QCheckBox("Bold")
+        self.sub2_thickness_checkbox.setChecked(self.settings.get('sub2_bold', False))
+        sub2_thickness_layout.addWidget(self.sub2_thickness_checkbox)
+        
         font_layout.addLayout(sub1_layout)
+        font_layout.addLayout(sub1_thickness_layout)
         font_layout.addLayout(sub2_layout)
+        font_layout.addLayout(sub2_thickness_layout)
         
         font_group.setLayout(font_layout)
         self.layout.addWidget(font_group)
@@ -863,6 +881,10 @@ class BaseTab(QWidget):
                     self.settings['sub1_font_size'] = self.sub1_font_slider.value()
                 if hasattr(self, 'sub2_font_slider') and self.sub2_font_slider is not None and self.sub2_font_slider.value() is not None:
                     self.settings['sub2_font_size'] = self.sub2_font_slider.value()
+                if hasattr(self, 'sub1_thickness_checkbox') and self.sub1_thickness_checkbox is not None:
+                    self.settings['sub1_bold'] = self.sub1_thickness_checkbox.isChecked()
+                if hasattr(self, 'sub2_thickness_checkbox') and self.sub2_thickness_checkbox is not None:
+                    self.settings['sub2_bold'] = self.sub2_thickness_checkbox.isChecked()
                 if hasattr(self, 'color_combo') and self.color_combo is not None and self.color_combo.currentText() is not None:
                     self.settings['color'] = self.color_combo.currentText()
                 if hasattr(self, 'codec_combo') and self.codec_combo is not None and self.codec_combo.currentText() is not None:
@@ -1083,6 +1105,12 @@ class BaseTab(QWidget):
         if hasattr(self, 'sub2_font_slider'):
             self.sub2_font_slider.setValue(self.settings.get('sub2_font_size', 16))
             
+        # Update thickness settings
+        if hasattr(self, 'sub1_thickness_checkbox'):
+            self.sub1_thickness_checkbox.setChecked(self.settings.get('sub1_bold', False))
+        if hasattr(self, 'sub2_thickness_checkbox'):
+            self.sub2_thickness_checkbox.setChecked(self.settings.get('sub2_bold', False))
+            
         # Update color
         if hasattr(self, 'color_combo'):
             color = self.settings.get('color', 'Yellow')
@@ -1139,6 +1167,12 @@ class BaseTab(QWidget):
             
         if hasattr(self, 'sub2_font_slider') and self.sub2_font_slider is not None:
             self.sub2_font_slider.valueChanged.connect(lambda v: self.save_value_to_settings('sub2_font_size', v))
+            
+        if hasattr(self, 'sub1_thickness_checkbox') and self.sub1_thickness_checkbox is not None:
+            self.sub1_thickness_checkbox.stateChanged.connect(lambda: self.save_value_to_settings('sub1_bold', self.sub1_thickness_checkbox.isChecked()))
+            
+        if hasattr(self, 'sub2_thickness_checkbox') and self.sub2_thickness_checkbox is not None:
+            self.sub2_thickness_checkbox.stateChanged.connect(lambda: self.save_value_to_settings('sub2_bold', self.sub2_thickness_checkbox.isChecked()))
             
         if hasattr(self, 'color_combo') and self.color_combo is not None:
             self.color_combo.currentTextChanged.connect(lambda: self.save_all_values())

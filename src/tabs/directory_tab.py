@@ -491,7 +491,8 @@ class DirectoryTab(BaseTab):
                         str(sub1_dest),  # Use the copied file
                         codec=self.codec_combo.currentText(),
                         color=self.color_combo.currentText(),
-                        size=self.sub1_font_slider.value()
+                        size=self.sub1_font_slider.value(),
+                        bold=self.sub1_thickness_checkbox.isChecked()
                     )
                     
                     # Add second subtitle
@@ -499,7 +500,8 @@ class DirectoryTab(BaseTab):
                         str(sub2_dest),  # Use the copied file
                         codec=self.codec_combo.currentText(),
                         color=WHITE,
-                        size=self.sub2_font_slider.value()
+                        size=self.sub2_font_slider.value(),
+                        bold=self.sub2_thickness_checkbox.isChecked()
                     )
                     
                     # Merge subtitles to create the merged SRT file

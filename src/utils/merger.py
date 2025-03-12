@@ -81,14 +81,15 @@ class Merger():
         """
         return '{\\an8}' + subtitle
 
-    def _set_subtitle_style(self, subtitle, color=None, size=None):
+    def _set_subtitle_style(self, subtitle, color=None, size=None, bold=False):
         """
-        Apply style (color and size) to subtitle text while preserving formatting
+        Apply style (color, size, and thickness) to subtitle text while preserving formatting
         
         Args:
             subtitle (str): The subtitle text
             color (str): Color in HTML format (#RRGGBB) or color name
             size (int): Font size in pixels
+            bold (bool): Whether to make the text bold
             
         Returns:
             str: Styled subtitle text with font tags
@@ -101,21 +102,15 @@ class Merger():
             if not line.strip():
                 continue
                 
-            line_content = line.strip()
+            # Extract all text content, ignoring all HTML tags
+            # This is a more aggressive approach that ensures we get just the raw text
+            raw_text = re.sub(r'<[^>]*>', '', line.strip())
             
-            # Extract font face if present
-            face_match = re.search(r'<font[^>]*face="([^"]+)"[^>]*>', line_content)
+            # Extract font face if present in the original line
+            face_match = re.search(r'<font[^>]*face="([^"]+)"[^>]*>', line.strip())
             face = face_match.group(1) if face_match else None
             
-            # Remove bold tags that make text too thick
-            clean_content = line_content
-            clean_content = re.sub(r'<b>|</b>', '', clean_content)
-            
-            # Remove all font tags but preserve other formatting (except bold)
-            clean_content = re.sub(r'<font[^>]*>', '', clean_content)
-            clean_content = re.sub(r'</font>', '', clean_content)
-            
-            # Build new font tag
+            # Build font attributes
             font_attrs = []
             if face:
                 font_attrs.append(f'face="{face}"')
@@ -124,15 +119,16 @@ class Merger():
             if color:
                 font_attrs.append(f'color="{color}"')
             
-            if font_attrs:
-                styled_lines.append(f'<font {" ".join(font_attrs)}>{clean_content}</font>')
+            # Create the styled line with consistent formatting
+            if bold:
+                styled_lines.append(f'<font {" ".join(font_attrs)}><b>{raw_text}</b></font>')
             else:
-                styled_lines.append(clean_content)
+                styled_lines.append(f'<font {" ".join(font_attrs)}>{raw_text}</font>')
         
         # Join lines with newlines and add final newline
         return '\n'.join(styled_lines) + '\n'
 
-    def _split_dialogs(self, dialogs, subtitle, color=None, size=None, top=False):
+    def _split_dialogs(self, dialogs, subtitle, color=None, size=None, top=False, bold=False):
         """Split and process subtitle dialogs with styling."""
         for dialog in dialogs:
             # Clean up dialog text
@@ -161,7 +157,7 @@ class Merger():
                     continue
                 
                 # Apply style (color and size) to text
-                text = self._set_subtitle_style(text, color, size)
+                text = self._set_subtitle_style(text, color, size, bold)
                 
                 # Add position if needed
                 if top:
@@ -192,7 +188,7 @@ class Merger():
                   (repr(text), codec, e))
             return b'An error has been occured in encoing by specifed `output_encoding`'
 
-    def add(self, subtitle_address, codec="utf-8", color=WHITE, size=None, top=False, time_offset=0):
+    def add(self, subtitle_address, codec="utf-8", color=WHITE, size=None, top=False, time_offset=0, bold=False):
         """
         Add a subtitle file to be merged
         
@@ -203,12 +199,14 @@ class Merger():
             size (int): Font size in pixels
             top (bool): Whether to position subtitle at top of screen
             time_offset (int): Time offset in milliseconds
+            bold (bool): Whether to make the text bold
         """
         subtitle = {
             'address': subtitle_address,
             'codec': codec,
             'color': color,
             'size': size,
+            'bold': bold,
             'dialogs': {}
         }
         
@@ -225,7 +223,7 @@ class Merger():
                         dialogs = re.split('\r\n\r|\n\n', decoded_data)
                         subtitle['data'] = decoded_data
                         subtitle['raw_dialogs'] = dialogs
-                        self._split_dialogs(dialogs, subtitle, color, size, top)
+                        self._split_dialogs(dialogs, subtitle, color, size, top, bold)
                         self.subtitles.append(subtitle)
                         return  # Successfully read file, exit function
                     except UnicodeDecodeError:
