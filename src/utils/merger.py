@@ -83,7 +83,7 @@ class Merger():
 
     def _set_subtitle_style(self, subtitle, color=None, size=None):
         """
-        Apply style (color and size) to subtitle text
+        Apply style (color and size) to subtitle text while preserving formatting
         
         Args:
             subtitle (str): The subtitle text
@@ -100,44 +100,72 @@ class Merger():
         for line in lines:
             if not line.strip():
                 continue
+                
+            line_content = line.strip()
             
-            # If line already has font tags, extract existing attributes
-            font_match = re.match(r'<font([^>]*)>(.*?)</font>', line.strip())
-            if font_match:
-                existing_attrs = font_match.group(1)
-                line_content = font_match.group(2)
+            # Special handling for nested font tags
+            if '<font' in line_content and '</font>' in line_content:
+                # Count opening and closing font tags
+                open_tags = len(re.findall(r'<font', line_content))
+                close_tags = len(re.findall(r'</font>', line_content))
                 
-                # Parse existing attributes
-                existing_size = re.search(r'size="(\d+)"', existing_attrs)
-                existing_color = re.search(r'color="([^"]+)"', existing_attrs)
-                
-                # Use provided values or fallback to existing ones
-                current_size = size if size is not None else (int(existing_size.group(1)) if existing_size else None)
-                current_color = color if color is not None else (existing_color.group(1) if existing_color else None)
-                
-                # Create new font tag with combined attributes
-                font_attrs = []
-                if current_size is not None:
-                    font_attrs.append(f'size="{current_size}"')
-                if current_color:
-                    font_attrs.append(f'color="{current_color}"')
-                
-                if font_attrs:
-                    styled_lines.append(f'<font {" ".join(font_attrs)}>{line_content}</font>')
-                else:
-                    styled_lines.append(line_content)
+                # If we have nested font tags
+                if open_tags > 1:
+                    # Extract all attributes from the outermost font tag
+                    outer_font_match = re.match(r'<font([^>]*)>(.*)</font>', line_content)
+                    if outer_font_match:
+                        outer_attrs = outer_font_match.group(1)
+                        inner_content = outer_font_match.group(2)
+                        
+                        # Parse existing attributes
+                        face_match = re.search(r'face="([^"]+)"', outer_attrs)
+                        face = face_match.group(1) if face_match else None
+                        
+                        # Build new attributes
+                        new_attrs = []
+                        if face:
+                            new_attrs.append(f'face="{face}"')
+                        if size is not None:
+                            new_attrs.append(f'size="{size}"')
+                        if color:
+                            new_attrs.append(f'color="{color}"')
+                            
+                        # Replace all size attributes in inner content
+                        inner_content = re.sub(r'size="[^"]+"', '', inner_content)
+                        
+                        # Create the new line with consistent size
+                        styled_lines.append(f'<font {" ".join(new_attrs)}>{inner_content}</font>')
+                        continue
+            
+            # For lines without nested font tags, or if we couldn't handle the nesting
+            # Extract formatting attributes
+            face_match = re.search(r'<font[^>]*face="([^"]+)"[^>]*>', line_content)
+            face = face_match.group(1) if face_match else None
+            
+            # Remove all font tags but preserve other formatting
+            clean_content = line_content
+            
+            # First, replace all font tags with temporary markers
+            clean_content = re.sub(r'<font[^>]*>', '§§FONTOPEN§§', clean_content)
+            clean_content = re.sub(r'</font>', '§§FONTCLOSE§§', clean_content)
+            
+            # Then remove all font markers
+            clean_content = clean_content.replace('§§FONTOPEN§§', '')
+            clean_content = clean_content.replace('§§FONTCLOSE§§', '')
+            
+            # Build new font tag
+            font_attrs = []
+            if face:
+                font_attrs.append(f'face="{face}"')
+            if size is not None:
+                font_attrs.append(f'size="{size}"')
+            if color:
+                font_attrs.append(f'color="{color}"')
+            
+            if font_attrs:
+                styled_lines.append(f'<font {" ".join(font_attrs)}>{clean_content}</font>')
             else:
-                # Line doesn't have font tags, add new ones
-                font_attrs = []
-                if size is not None:
-                    font_attrs.append(f'size="{size}"')
-                if color:
-                    font_attrs.append(f'color="{color}"')
-                
-                if font_attrs:
-                    styled_lines.append(f'<font {" ".join(font_attrs)}>{line.strip()}</font>')
-                else:
-                    styled_lines.append(line.strip())
+                styled_lines.append(clean_content)
         
         # Join lines with newlines and add final newline
         return '\n'.join(styled_lines) + '\n'

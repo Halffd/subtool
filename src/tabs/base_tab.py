@@ -856,20 +856,20 @@ class BaseTab(QWidget):
                 # Update settings with provided values
                 self.settings.update(settings)
             else:
-                # Only save values for attributes that exist
-                if hasattr(self, 'scale_slider'):
+                # Only save values for attributes that exist and are initialized
+                if hasattr(self, 'scale_slider') and self.scale_slider is not None and self.scale_slider.value() is not None:
                     self.settings['ui_scale'] = self.scale_slider.value()
-                if hasattr(self, 'sub1_font_slider'):
+                if hasattr(self, 'sub1_font_slider') and self.sub1_font_slider is not None and self.sub1_font_slider.value() is not None:
                     self.settings['sub1_font_size'] = self.sub1_font_slider.value()
-                if hasattr(self, 'sub2_font_slider'):
+                if hasattr(self, 'sub2_font_slider') and self.sub2_font_slider is not None and self.sub2_font_slider.value() is not None:
                     self.settings['sub2_font_size'] = self.sub2_font_slider.value()
-                if hasattr(self, 'color_combo'):
+                if hasattr(self, 'color_combo') and self.color_combo is not None and self.color_combo.currentText() is not None:
                     self.settings['color'] = self.color_combo.currentText()
-                if hasattr(self, 'codec_combo'):
+                if hasattr(self, 'codec_combo') and self.codec_combo is not None and self.codec_combo.currentText() is not None:
                     self.settings['codec'] = self.codec_combo.currentText()
-                if hasattr(self, 'option_merge_subtitles'):
+                if hasattr(self, 'option_merge_subtitles') and self.option_merge_subtitles is not None:
                     self.settings['merge_automatically'] = self.option_merge_subtitles.isChecked()
-                if hasattr(self, 'option_generate_log'):
+                if hasattr(self, 'option_generate_log') and self.option_generate_log is not None:
                     self.settings['generate_log'] = self.option_generate_log.isChecked()
             
             # Save to file

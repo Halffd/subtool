@@ -524,7 +524,7 @@ class DirectoryTab(BaseTab):
                             basic_ass_path = str(video_file.parent / f'{video_file.stem}.basic.ass')
                             create_ass_from_srt(
                                 srt_file_path=merged_srt_path,
-                                output_path=basic_ass_path,
+                                output_dir=str(video_file.parent),
                                 auto_generate_furigana=True,
                                 advanced_styling=False,
                                 **base_style
@@ -535,7 +535,7 @@ class DirectoryTab(BaseTab):
                             color_ass_path = str(video_file.parent / f'{video_file.stem}.color.ass')
                             create_ass_from_srt(
                                 srt_file_path=merged_srt_path,
-                                output_path=color_ass_path,
+                                output_dir=str(video_file.parent),
                                 auto_generate_furigana=True,
                                 advanced_styling=False,
                                 use_colors=True,
@@ -547,7 +547,7 @@ class DirectoryTab(BaseTab):
                             advanced_ass_path = str(video_file.parent / f'{video_file.stem}.advanced.ass')
                             create_ass_from_srt(
                                 srt_file_path=merged_srt_path,
-                                output_path=advanced_ass_path,
+                                output_dir=str(video_file.parent),
                                 auto_generate_furigana=True,
                                 advanced_styling=True,
                                 use_colors=True,
