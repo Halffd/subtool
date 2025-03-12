@@ -103,55 +103,17 @@ class Merger():
                 
             line_content = line.strip()
             
-            # Special handling for nested font tags
-            if '<font' in line_content and '</font>' in line_content:
-                # Count opening and closing font tags
-                open_tags = len(re.findall(r'<font', line_content))
-                close_tags = len(re.findall(r'</font>', line_content))
-                
-                # If we have nested font tags
-                if open_tags > 1:
-                    # Extract all attributes from the outermost font tag
-                    outer_font_match = re.match(r'<font([^>]*)>(.*)</font>', line_content)
-                    if outer_font_match:
-                        outer_attrs = outer_font_match.group(1)
-                        inner_content = outer_font_match.group(2)
-                        
-                        # Parse existing attributes
-                        face_match = re.search(r'face="([^"]+)"', outer_attrs)
-                        face = face_match.group(1) if face_match else None
-                        
-                        # Build new attributes
-                        new_attrs = []
-                        if face:
-                            new_attrs.append(f'face="{face}"')
-                        if size is not None:
-                            new_attrs.append(f'size="{size}"')
-                        if color:
-                            new_attrs.append(f'color="{color}"')
-                            
-                        # Replace all size attributes in inner content
-                        inner_content = re.sub(r'size="[^"]+"', '', inner_content)
-                        
-                        # Create the new line with consistent size
-                        styled_lines.append(f'<font {" ".join(new_attrs)}>{inner_content}</font>')
-                        continue
-            
-            # For lines without nested font tags, or if we couldn't handle the nesting
-            # Extract formatting attributes
+            # Extract font face if present
             face_match = re.search(r'<font[^>]*face="([^"]+)"[^>]*>', line_content)
             face = face_match.group(1) if face_match else None
             
-            # Remove all font tags but preserve other formatting
+            # Remove bold tags that make text too thick
             clean_content = line_content
+            clean_content = re.sub(r'<b>|</b>', '', clean_content)
             
-            # First, replace all font tags with temporary markers
-            clean_content = re.sub(r'<font[^>]*>', '§§FONTOPEN§§', clean_content)
-            clean_content = re.sub(r'</font>', '§§FONTCLOSE§§', clean_content)
-            
-            # Then remove all font markers
-            clean_content = clean_content.replace('§§FONTOPEN§§', '')
-            clean_content = clean_content.replace('§§FONTCLOSE§§', '')
+            # Remove all font tags but preserve other formatting (except bold)
+            clean_content = re.sub(r'<font[^>]*>', '', clean_content)
+            clean_content = re.sub(r'</font>', '', clean_content)
             
             # Build new font tag
             font_attrs = []
