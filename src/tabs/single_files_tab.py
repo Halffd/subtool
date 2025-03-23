@@ -237,13 +237,21 @@ class SingleFilesTab(BaseTab):
                 output_encoding=self.codec_combo.currentText()
             )
             
+            # Apply SVG filtering options
+            if hasattr(self, 'option_enable_svg_filtering'):
+                merger.enable_svg_filtering(self.option_enable_svg_filtering.isChecked())
+            
+            if hasattr(self, 'option_remove_text_entries'):
+                merger.set_remove_text_entries(self.option_remove_text_entries.isChecked())
+            
             # Add first subtitle with color, size and sync delay
             merger.add(
                 sub1_file,
                 codec=self.codec_combo.currentText(),
                 color=self.color_combo.currentText(),  # Already in hex format
                 size=self.sub1_font_slider.value(),
-                time_offset=self.sub1_sync_spinbox.value()
+                time_offset=self.sub1_sync_spinbox.value(),
+                preserve_svg=self.option_preserve_svg.isChecked() if hasattr(self, 'option_preserve_svg') else True
             )
             
             # Add second subtitle with size and sync delay
@@ -252,7 +260,8 @@ class SingleFilesTab(BaseTab):
                 codec=self.codec_combo.currentText(),
                 color=WHITE,  # Use constant from merger.py
                 size=self.sub2_font_slider.value(),
-                time_offset=self.sub2_sync_spinbox.value()
+                time_offset=self.sub2_sync_spinbox.value(),
+                preserve_svg=self.option_preserve_svg.isChecked() if hasattr(self, 'option_preserve_svg') else True
             )
             
             # Merge subtitles

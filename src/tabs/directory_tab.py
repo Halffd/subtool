@@ -486,13 +486,21 @@ class DirectoryTab(BaseTab):
                         output_encoding=self.codec_combo.currentText()
                     )
                     
+                    # Apply SVG filtering options
+                    if hasattr(self, 'option_enable_svg_filtering'):
+                        merger.enable_svg_filtering(self.option_enable_svg_filtering.isChecked())
+                    
+                    if hasattr(self, 'option_remove_text_entries'):
+                        merger.set_remove_text_entries(self.option_remove_text_entries.isChecked())
+                    
                     # Add first subtitle with color and size
                     merger.add(
                         str(sub1_dest),  # Use the copied file
                         codec=self.codec_combo.currentText(),
                         color=self.color_combo.currentText(),
                         size=self.sub1_font_slider.value(),
-                        bold=self.sub1_thickness_checkbox.isChecked()
+                        bold=self.sub1_thickness_checkbox.isChecked(),
+                        preserve_svg=self.option_preserve_svg.isChecked() if hasattr(self, 'option_preserve_svg') else True
                     )
                     
                     # Add second subtitle
@@ -501,7 +509,8 @@ class DirectoryTab(BaseTab):
                         codec=self.codec_combo.currentText(),
                         color=WHITE,
                         size=self.sub2_font_slider.value(),
-                        bold=self.sub2_thickness_checkbox.isChecked()
+                        bold=self.sub2_thickness_checkbox.isChecked(),
+                        preserve_svg=self.option_preserve_svg.isChecked() if hasattr(self, 'option_preserve_svg') else True
                     )
                     
                     # Merge subtitles to create the merged SRT file

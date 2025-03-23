@@ -4,6 +4,7 @@
 import datetime
 import codecs
 import re
+import logging
 
 RED = '#FF003B'
 BLUE = '#00ADFF'
@@ -28,6 +29,17 @@ class Merger():
         self.output_path = output_path
         self.output_name = output_name
         self.output_encoding = output_encoding
+        self.svg_filter_enabled = False
+        self.remove_text_entries = False
+        self.seen_svg_timestamps = set()
+        # Initialize logger
+        self.logger = logging.getLogger('merger')
+        if not self.logger.handlers:
+            handler = logging.StreamHandler()
+            formatter = logging.Formatter('%(levelname)s: %(message)s')
+            handler.setFormatter(formatter)
+            self.logger.addHandler(handler)
+            self.logger.setLevel(logging.INFO)
 
     def _insert_bom(self, content, encoding):
         encoding = encoding.replace('-', '')\
@@ -81,7 +93,19 @@ class Merger():
         """
         return '{\\an8}' + subtitle
 
-    def _set_subtitle_style(self, subtitle, color=None, size=None, bold=False):
+    def _is_svg_path(self, text):
+        """
+        Check if the text contains an SVG path.
+        
+        Args:
+            text (str): The subtitle text
+            
+        Returns:
+            bool: True if the text contains an SVG path, False otherwise
+        """
+        return bool(re.search(r'{\an\d}m\s+\d+\.\d+\s+\d+\.\d+\s+b', text))
+
+    def _set_subtitle_style(self, subtitle, color=None, size=None, bold=False, preserve_svg=False):
         """
         Apply style (color, size, and thickness) to subtitle text while preserving formatting
         
@@ -90,10 +114,39 @@ class Merger():
             color (str): Color in HTML format (#RRGGBB) or color name
             size (int): Font size in pixels
             bold (bool): Whether to make the text bold
+            preserve_svg (bool): Whether to preserve SVG path data
             
         Returns:
             str: Styled subtitle text with font tags
         """
+        # Check if this is an SVG path and we should preserve it
+        if preserve_svg and self._is_svg_path(subtitle):
+            # For SVG paths, we want to preserve the original formatting
+            # Extract font face if present in the original line
+            face_match = re.search(r'<font[^>]*face="([^"]+)"[^>]*>', subtitle.strip())
+            face = face_match.group(1) if face_match else "Brady Bunch Remastered"
+            
+            # Extract size if present
+            size_match = re.search(r'<font[^>]*size="([^"]+)"[^>]*>', subtitle.strip())
+            svg_size = size_match.group(1) if size_match else "48"
+            
+            # Extract color if present
+            color_match = re.search(r'<font[^>]*color="([^"]+)"[^>]*>', subtitle.strip())
+            svg_color = color_match.group(1) if color_match else "#FFFFFF"
+            
+            # Extract position if present
+            position_match = re.search(r'{\\an(\d)}', subtitle)
+            position = position_match.group(1) if position_match else "7"
+            
+            # Extract the SVG path data
+            svg_path_match = re.search(r'({\an\d}m\s+\d+\.\d+.+)', subtitle)
+            if svg_path_match:
+                svg_path = svg_path_match.group(1)
+                return f'<font face="{face}" size="{svg_size}" color="{svg_color}">{svg_path}</font>\n'
+            
+            # If we couldn't extract the path, return the original
+            return subtitle + '\n'
+        
         # Split text into lines and process each line
         lines = subtitle.strip().split('\n')
         styled_lines = []
@@ -128,7 +181,7 @@ class Merger():
         # Join lines with newlines and add final newline
         return '\n'.join(styled_lines) + '\n'
 
-    def _split_dialogs(self, dialogs, subtitle, color=None, size=None, top=False, bold=False):
+    def _split_dialogs(self, dialogs, subtitle, color=None, size=None, top=False, bold=False, preserve_svg=False):
         """Split and process subtitle dialogs with styling."""
         for dialog in dialogs:
             # Clean up dialog text
@@ -156,11 +209,25 @@ class Merger():
                 if not text:
                     continue
                 
+                # Check if this is an SVG path
+                is_svg = self._is_svg_path(text)
+                
+                # If SVG filtering is enabled, handle SVG paths specially
+                if self.svg_filter_enabled and is_svg:
+                    # Skip duplicate SVG entries for the same timestamp
+                    if timestamp in self.seen_svg_timestamps:
+                        continue
+                    self.seen_svg_timestamps.add(timestamp)
+                
+                # Skip text entries if remove_text_entries is True and this is not an SVG path
+                if self.remove_text_entries and not is_svg:
+                    continue
+                
                 # Apply style (color and size) to text
-                text = self._set_subtitle_style(text, color, size, bold)
+                text = self._set_subtitle_style(text, color, size, bold, preserve_svg)
                 
                 # Add position if needed
-                if top:
+                if top and not is_svg:  # Don't add top position to SVG paths as they have their own positioning
                     text = self._put_subtitle_top(text)
                     
                 # Format final text with timestamp
@@ -188,7 +255,7 @@ class Merger():
                   (repr(text), codec, e))
             return b'An error has been occured in encoing by specifed `output_encoding`'
 
-    def add(self, subtitle_address, codec="utf-8", color=WHITE, size=None, top=False, time_offset=0, bold=False):
+    def add(self, subtitle_address, codec="utf-8", color=WHITE, size=None, top=False, time_offset=0, bold=False, preserve_svg=False):
         """
         Add a subtitle file to be merged
         
@@ -200,6 +267,7 @@ class Merger():
             top (bool): Whether to position subtitle at top of screen
             time_offset (int): Time offset in milliseconds
             bold (bool): Whether to make the text bold
+            preserve_svg (bool): Whether to preserve SVG path data
         """
         subtitle = {
             'address': subtitle_address,
@@ -223,7 +291,7 @@ class Merger():
                         dialogs = re.split('\r\n\r|\n\n', decoded_data)
                         subtitle['data'] = decoded_data
                         subtitle['raw_dialogs'] = dialogs
-                        self._split_dialogs(dialogs, subtitle, color, size, top, bold)
+                        self._split_dialogs(dialogs, subtitle, color, size, top, bold, preserve_svg)
                         self.subtitles.append(subtitle)
                         return  # Successfully read file, exit function
                     except UnicodeDecodeError:
@@ -234,12 +302,33 @@ class Merger():
         # If we get here, none of the encodings worked
         raise ValueError(f"Could not decode subtitle file {subtitle_address} with any of the supported encodings")
 
+    def enable_svg_filtering(self, enabled=True):
+        """
+        Enable or disable SVG filtering.
+        
+        Args:
+            enabled (bool): Whether to enable SVG filtering
+        """
+        self.svg_filter_enabled = enabled
+        
+    def set_remove_text_entries(self, remove=False):
+        """
+        Set whether to remove text entries.
+        
+        Args:
+            remove (bool): Whether to remove text entries
+        """
+        self.remove_text_entries = remove
+
     def get_output_path(self):
         if self.output_path.endswith('/'):
             return self.output_path + self.output_name
         return self.output_path + '/' + self.output_name
 
     def merge(self):
+        # Reset SVG timestamp tracking before merging
+        self.seen_svg_timestamps = set()
+        
         self.lines = []
         self.timestamps = list(set(self.timestamps))
         self.timestamps.sort()
@@ -262,10 +351,21 @@ class Merger():
                         '\n'.encode(self.output_encoding) + line
                     self.lines.append(dialog)
                     count += 1
-        if self.lines[-1].endswith(b'\x00\n\x00'):
-            self.lines[-1] = self.lines[-1][:-3] + b'\x00'
-        if self.lines[-1].endswith(b'\n'):
-            self.lines[-1] = self.lines[-1][:-1] + b''
+        
+        # Check if lines list is not empty before accessing its elements
+        if self.lines:
+            if self.lines[-1].endswith(b'\x00\n\x00'):
+                self.lines[-1] = self.lines[-1][:-3] + b'\x00'
+            if self.lines[-1].endswith(b'\n'):
+                self.lines[-1] = self.lines[-1][:-1] + b''
+        
+        # Handle the case when no lines were generated (all entries were filtered out)
+        if not self.lines:
+            self.logger.warning("No subtitle entries remained after filtering. Creating empty output file.")
+            # Create an empty file or a file with a message
+            empty_content = "1\n00:00:01,000 --> 00:00:05,000\nNo subtitle entries remained after filtering.\n"
+            self.lines.append(self._encode(empty_content))
+        
         with open(self.get_output_path(), 'w', encoding=self.output_encoding) as output:
             output.buffer.writelines(self.lines)
             print("'%s'" % (output.name), 'created successfully.')

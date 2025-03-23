@@ -740,9 +740,43 @@ class BaseTab(QWidget):
             "Convert SRT files with furigana in parentheses to ASS format with proper ruby text"
         )
         
+        # Add SVG filtering options
+        svg_options_group = QGroupBox("SVG Options")
+        svg_options_layout = QVBoxLayout()
+        
+        self.option_enable_svg_filtering = QCheckBox("Enable SVG Filtering")
+        self.option_enable_svg_filtering.setChecked(
+            self.settings.get('enable_svg_filtering', False)
+        )
+        self.option_enable_svg_filtering.setToolTip(
+            "Filter duplicate SVG path entries at the same timestamp"
+        )
+        
+        self.option_remove_text_entries = QCheckBox("Remove Text Entries")
+        self.option_remove_text_entries.setChecked(
+            self.settings.get('remove_text_entries', False)
+        )
+        self.option_remove_text_entries.setToolTip(
+            "Remove text entries, keeping only SVG path entries"
+        )
+        
+        self.option_preserve_svg = QCheckBox("Preserve SVG Paths")
+        self.option_preserve_svg.setChecked(
+            self.settings.get('preserve_svg', True)
+        )
+        self.option_preserve_svg.setToolTip(
+            "Preserve SVG path data when merging subtitles"
+        )
+        
+        svg_options_layout.addWidget(self.option_enable_svg_filtering)
+        svg_options_layout.addWidget(self.option_remove_text_entries)
+        svg_options_layout.addWidget(self.option_preserve_svg)
+        svg_options_group.setLayout(svg_options_layout)
+        
         options_layout.addWidget(self.option_merge_subtitles)
         options_layout.addWidget(self.option_generate_log)
         options_layout.addWidget(self.option_convert_to_ass)
+        options_layout.addWidget(svg_options_group)
         
         # Add button to load previous configurations
         load_config_btn = QPushButton("Load Previous Configuration")
@@ -824,7 +858,10 @@ class BaseTab(QWidget):
         
         return {
             'color': color_hex,
-            'codec': self.codec_combo.currentText()
+            'codec': self.codec_combo.currentText(),
+            'enable_svg_filtering': self.option_enable_svg_filtering.isChecked(),
+            'remove_text_entries': self.option_remove_text_entries.isChecked(),
+            'preserve_svg': self.option_preserve_svg.isChecked()
         }
 
     def load_settings(self) -> dict:
@@ -964,6 +1001,22 @@ class BaseTab(QWidget):
                 settings_update['convert_to_ass'] = self.option_convert_to_ass.isChecked()
             else:
                 settings_update['convert_to_ass'] = self.settings.get('convert_to_ass', False)
+            
+            # Save SVG filtering options
+            if hasattr(self, 'option_enable_svg_filtering') and self.option_enable_svg_filtering is not None:
+                settings_update['enable_svg_filtering'] = self.option_enable_svg_filtering.isChecked()
+            else:
+                settings_update['enable_svg_filtering'] = self.settings.get('enable_svg_filtering', False)
+                
+            if hasattr(self, 'option_remove_text_entries') and self.option_remove_text_entries is not None:
+                settings_update['remove_text_entries'] = self.option_remove_text_entries.isChecked()
+            else:
+                settings_update['remove_text_entries'] = self.settings.get('remove_text_entries', False)
+                
+            if hasattr(self, 'option_preserve_svg') and self.option_preserve_svg is not None:
+                settings_update['preserve_svg'] = self.option_preserve_svg.isChecked()
+            else:
+                settings_update['preserve_svg'] = self.settings.get('preserve_svg', True)
             
             # Add directory-specific settings if they exist
             if hasattr(self, 'dir_entry') and self.dir_entry is not None and self.dir_entry.text():
