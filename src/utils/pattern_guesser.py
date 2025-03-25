@@ -15,13 +15,13 @@ def is_japanese_char(char: str) -> bool:
     name = unicodedata.name(char, '')
     return any(japanese_script in name for japanese_script in ['HIRAGANA', 'KATAKANA', 'CJK UNIFIED'])
 
-def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
+def suggest_patterns(directory: str, logger=None) -> dict:
     """
     Analyze subtitle files in a directory and suggest patterns for filtering
     and episode number extraction.
     
     Args:
-        dir_path: Path to directory containing subtitle files
+        directory: Path to directory containing subtitle files
         logger: Logger to use for debug output
         
     Returns:
@@ -31,6 +31,7 @@ def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
         - verification: metrics about pattern quality
         - groups: detected subtitle groups
         - japanese_files: list of files with significant Japanese content (if any)
+        - conflicts: dictionary of detected pattern conflicts
     """
     try:
         # Set up logging if not provided
@@ -44,7 +45,7 @@ def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
                 logger.setLevel(logging.INFO)
         
         # Find all SRT files in the directory
-        dir_path = Path(dir_path)
+        dir_path = Path(directory)
         srt_files = list(dir_path.glob('*.srt'))
         
         if not srt_files:
@@ -63,12 +64,13 @@ def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
                     "overlap": 0,
                     "sub1_ep_matches": 0,
                     "sub2_ep_matches": 0
-                }
+                },
+                "conflicts": {}
             }
             
         logger.info(f"Found {len(srt_files)} SRT files")
         
-        # Step 1: Analyze files to identify Japanese content vs non-Japanese
+        # Step 1: Analyze files to identify Japanese content
         japanese_files = []
         non_japanese_files = []
         
@@ -95,15 +97,17 @@ def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
             suggested_patterns = create_patterns_from_general_groups(groups, srt_files, logger)
         
         # Now let's specifically look for episode number patterns
-        # Try to match known episode number formats in the names
         episode_patterns = detect_episode_patterns(srt_files, suggested_patterns, logger)
         suggested_patterns.update(episode_patterns)
+        
+        # Check for conflicts in patterns
+        conflicts = detect_conflicts(srt_files, suggested_patterns, logger)
         
         # Verify the patterns with some metrics
         verification = verify_patterns(srt_files, suggested_patterns, japanese_files, logger)
         
         # Log results summary
-        logger.info(f"Analysis complete. Suggested Sub1 pattern: {suggested_patterns['sub1_pattern']}, Sub2 pattern: {suggested_patterns['sub2_pattern']}")
+        logger.info(f"Analysis complete. Found {len(conflicts)} pattern conflicts.")
         
         # Return the results
         return {
@@ -111,7 +115,8 @@ def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
             "file_count": len(srt_files),
             "verification": verification,
             "groups": groups,
-            "japanese_files": japanese_files if japanese_files else None
+            "japanese_files": japanese_files if japanese_files else None,
+            "conflicts": conflicts
         }
         
     except Exception as e:
@@ -134,7 +139,8 @@ def suggest_patterns(dir_path: str, logger=None) -> Dict[str, Any]:
                 "overlap": 0,
                 "sub1_ep_matches": 0,
                 "sub2_ep_matches": 0
-            }
+            },
+            "conflicts": {}
         }
 
 def check_for_japanese(file_path: Path, logger) -> Tuple[bool, float]:
@@ -437,4 +443,87 @@ def verify_patterns(files, patterns, japanese_files, logger):
         "overlap": len(overlap),
         "sub1_ep_matches": len(sub1_ep_matches),
         "sub2_ep_matches": len(sub2_ep_matches)
-    } 
+    }
+
+def detect_conflicts(files, patterns, logger):
+    """
+    Detect files that match multiple patterns for the same episode number.
+    
+    Args:
+        files: List of Path objects for subtitle files
+        patterns: Dictionary of patterns to check
+        logger: Logger instance
+        
+    Returns:
+        dict: Dictionary of conflicts by episode and language
+    """
+    conflicts = {}
+    
+    # Known episode number formats
+    episode_formats = [
+        (r'[Ss](\d+)[Ee](\d+)', "SxxExx format (e.g. S01E05)"),
+        (r'[Ee]p(?:isode)?[\s._-]*(\d+)', "Episode format (e.g. ep05)"),
+        (r'[\s._-](\d{2,3})(?:[\s._-]|$)', "Simple number format (e.g. _05_)"),
+        (r'(?:^|\s|_|-)\[?(\d{2,3})\]?(?:\s|$|\.)', "Bracketed number format (e.g. [05])")
+    ]
+    
+    try:
+        # Group files by episode number
+        episode_files = {}
+        
+        for file in files:
+            # Try to extract episode number using each format
+            for pattern, desc in episode_formats:
+                match = re.search(pattern, file.name)
+                if match:
+                    # Get the episode number (use last group if multiple)
+                    ep_num = match.group(match.lastindex)
+                    ep_num = str(int(ep_num))  # Normalize (e.g. "05" -> "5")
+                    
+                    # Determine language (Japanese or English)
+                    is_japanese, _ = check_for_japanese(file, logger)
+                    lang = "Japanese" if is_japanese else "English"
+                    
+                    # Create key for this episode and language
+                    key = (ep_num, lang)
+                    if key not in episode_files:
+                        episode_files[key] = []
+                    episode_files[key].append(file)
+                    break
+        
+        # Check for conflicts
+        for (ep_num, lang), files in episode_files.items():
+            if len(files) > 1:
+                # Group files by their patterns
+                pattern_groups = {}
+                
+                for file in files:
+                    # Find which pattern(s) this file matches
+                    for pattern, desc in episode_formats:
+                        if re.search(pattern, file.name):
+                            if pattern not in pattern_groups:
+                                pattern_groups[pattern] = {
+                                    'pattern': pattern,
+                                    'description': desc,
+                                    'matches': [],
+                                    'examples': []
+                                }
+                            pattern_groups[pattern]['matches'].append(str(file))
+                            # Add an example if we don't have one yet
+                            if not pattern_groups[pattern]['examples']:
+                                pattern_groups[pattern]['examples'].append(str(file))
+                
+                # If we found multiple patterns, record the conflict
+                if len(pattern_groups) > 1:
+                    conflicts[(ep_num, lang)] = {
+                        'episode': ep_num,
+                        'language': lang,
+                        'patterns': list(pattern_groups.values())
+                    }
+                    
+        logger.debug(f"Found {len(conflicts)} pattern conflicts")
+        return conflicts
+        
+    except Exception as e:
+        logger.error(f"Error detecting conflicts: {e}")
+        return {}  # Return empty dict on error 
