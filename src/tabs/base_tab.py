@@ -2,13 +2,13 @@ from pathlib import Path
 import logging
 import sys
 import json
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QGroupBox,
     QLabel, QPushButton, QLineEdit, QTextEdit, QSpinBox,
     QDoubleSpinBox, QComboBox, QCheckBox, QSlider, QScrollBar,
     QApplication, QMessageBox, QFileDialog
 )
-from PyQt5.QtCore import Qt, QEvent
+from PyQt6.QtCore import Qt, QEvent
 from ..utils.merger import RED, BLUE, GREEN, WHITE, YELLOW
 
 # Base class for all tabs
@@ -17,21 +17,6 @@ class BaseTab(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        
-        # Create config directory in the application folder
-        self.config_dir = Path(__file__).parent / 'conf'
-        self.config_dir.mkdir(exist_ok=True)
-        
-        # Define settings and log file paths
-        self.settings_file = self.config_dir / 'configs.json'
-        self.log_file = self.config_dir / 'subtitle_merger.log'
-        
-        # Setup logging first
-        self.setup_logging()
-        self.logger = logging.getLogger('SubtitleMerger')
-        
-        # Load settings before UI setup
-        self.settings = self.load_settings()
         
         # Define default style - update to include window borders and title bar
         self.default_style = """
@@ -194,12 +179,42 @@ class BaseTab(QWidget):
             }
         """
         
-        # Set style sheet for the entire application
-        app = QApplication.instance()
-        if app:
-            app.setStyleSheet(self.default_style)
+        # Create config directory in the application folder
+        self.config_dir = Path(__file__).resolve().parent.parent.parent / 'conf'
+        self.config_dir.mkdir(exist_ok=True)
+        
+        # Define settings and log file paths
+        self.settings_file = self.config_dir / 'configs.json'
+        self.log_file = self.config_dir / 'subtitle_merger.log'
+        
+        # Setup logging first
+        self.setup_logging()
+        self.logger = logging.getLogger('SubtitleMerger')
+        
+        # Load settings before UI setup
+        try:
+            self.settings = self.load_settings()
+            if self.settings is None:
+                self.logger.error("Failed to load settings, using defaults")
+                self.settings = {
+                    'ui_scale': 275,
+                    'sub1_font_size': 16,
+                    'sub2_font_size': 16,
+                    'color': 'Yellow',
+                    'codec': 'UTF-8'
+                }
+        except Exception as e:
+            self.logger.error(f"Error during settings initialization: {e}")
+            self.settings = {
+                'ui_scale': 275,
+                'sub1_font_size': 16,
+                'sub2_font_size': 16,
+                'color': 'Yellow',
+                'codec': 'UTF-8'
+            }
         
         # Initialize UI elements as class attributes
+        self.layout = None
         self.sub1_font_slider = None
         self.sub2_font_slider = None
         self.sub1_font_spinbox = None
@@ -227,17 +242,32 @@ class BaseTab(QWidget):
         
         # Create content widget and its layout
         content_widget = QWidget()
-        self.layout = QVBoxLayout(content_widget)
+        # Initialize layout as an instance
+        layout = QVBoxLayout()
+        content_widget.setLayout(layout)
         scroll.setWidget(content_widget)
+        
+        # Store the layout reference
+        self.layout = layout
         
         # Enable focus for key events
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         
-        # Setup UI after settings are loaded
-        self.setup_ui()
-        
         # Now that UI is set up, connect signals
         self.connect_signals()
+        
+        # Continue with UI setup
+        try:
+            self.setup_ui()
+        except Exception as e:
+            self.logger.error(f"Error during UI setup: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+        
+        # Set style sheet for the entire application
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(self.default_style)
 
     def setup_logging(self):
         """Setup logging configuration."""
@@ -565,7 +595,7 @@ class BaseTab(QWidget):
         scale_group.setLayout(scale_layout)
         
         # Add scale group to the top of the layout
-        self.layout.insertWidget(0, scale_group)
+        self.layout.addWidget(scale_group)
         
         # Connect signals
         self.scale_slider.valueChanged.connect(self.on_scale_changed)
@@ -881,24 +911,34 @@ class BaseTab(QWidget):
             'sub2_pattern': r'Squid Girl - S01E\d+\.4\.eng\.srt$',  # Match .4.eng subtitles
             'sub1_episode_pattern': r'S01E(\d+)',  # Extract episode number after S01E
             'sub2_episode_pattern': r'S01E(\d+)',  # Extract episode number after S01E
-            'episode_pattern': r'\d+'  # Legacy support
+            'episode_pattern': r'\d+',  # Legacy support
+            'auto_detect_mode': False  # Default to manual mode
         }
         
         try:
+            # Ensure settings_file exists and is properly initialized
+            if not hasattr(self, 'settings_file'):
+                self.config_dir = Path(__file__).parent.parent.parent / 'conf'
+                self.config_dir.mkdir(exist_ok=True)
+                self.settings_file = self.config_dir / 'configs.json'
+                
             if self.settings_file.exists():
                 with open(self.settings_file, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-                    self.logger.debug("Settings loaded successfully")
+                    if hasattr(self, 'logger'):
+                        self.logger.debug("Settings loaded successfully")
                     # Merge with defaults in case new settings were added
                     return {**default_settings, **settings}
             else:
-                self.logger.info("No settings file found, creating with defaults")
+                if hasattr(self, 'logger'):
+                    self.logger.info("No settings file found, creating with defaults")
                 with open(self.settings_file, 'w', encoding='utf-8') as f:
                     json.dump(default_settings, f, indent=4)
                 return default_settings
                 
         except Exception as e:
-            self.logger.error(f"Error loading settings: {e}")
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Error loading settings: {e}")
             return default_settings
 
     def save_settings(self, settings=None):
@@ -1041,61 +1081,62 @@ class BaseTab(QWidget):
         if not input_dir:
             self.logger.error("Please select an input directory first")
             return
-
-        try:
-            input_path = Path(input_dir)
-            
-            # Get current patterns from UI
-            sub1_pattern = self.sub1_pattern_entry.text()
-            sub2_pattern = self.sub2_pattern_entry.text()
-            sub1_ep_pattern = self.sub1_episode_pattern_entry.text()
-            sub2_ep_pattern = self.sub2_episode_pattern_entry.text()
-            
-            # Find matching files
-            sub1_files = [f for f in input_path.glob('*.srt') 
-                         if re.search(sub1_pattern, f.name, re.IGNORECASE)]
-            sub2_files = [f for f in input_path.glob('*.srt')
-                         if re.search(sub2_pattern, f.name, re.IGNORECASE)]
-            self.logger.debug('Sub 1', sub1_files)
-            self.logger.debug('Sub 2', sub2_files)
-            # Test episode number extraction
-            sub1_episodes = []
-            sub2_episodes = []
-            
-            for f in sub1_files[:5]:  # Test first 5 files
-                match = re.search(sub1_ep_pattern, f.stem)
-                if match:
-                    sub1_episodes.append((f.name, match.group(1)))
-                    
-            for f in sub2_files[:5]:  # Test first 5 files
-                match = re.search(sub2_ep_pattern, f.stem)
-                if match:
-                    sub2_episodes.append((f.name, match.group(1)))
-            
-            # Show results
-            msg = QMessageBox()
-            msg.setWindowTitle("Pattern Test Results")
-            
-            results = [
-                f"Sub1 Pattern ({sub1_pattern}):",
-                f"Found {len(sub1_files)} matching files",
-                "\nExample matches with episode numbers:",
-                *[f"{name} -> Episode {ep}" for name, ep in sub1_episodes],
-                "\nSub2 Pattern ({sub2_pattern}):",
-                f"Found {len(sub2_files)} matching files",
-                "\nExample matches with episode numbers:",
-                *[f"{name} -> Episode {ep}" for name, ep in sub2_episodes]
-            ]
-            
-            msg.setText("\n".join(results))
-            msg.exec()
-            
-        except re.error as e:
-            self.logger.error(f"Invalid regular expression: {e}")
-            QMessageBox.critical(self, "Error", f"Invalid regular expression: {e}")
-        except Exception as e:
-            self.logger.error(f"Error testing patterns: {e}")
-            QMessageBox.critical(self, "Error", f"Error testing patterns: {e}")
+        else:
+            try:
+                input_path = Path(input_dir)
+                
+                # Get current patterns from UI
+                sub1_pattern = self.sub1_pattern_entry.text()
+                sub2_pattern = self.sub2_pattern_entry.text()
+                sub1_ep_pattern = self.sub1_episode_pattern_entry.text()
+                sub2_ep_pattern = self.sub2_episode_pattern_entry.text()
+                
+                # Find matching files
+                sub1_files = [f for f in input_path.glob('*.srt') 
+                             if re.search(sub1_pattern, f.name, re.IGNORECASE)]
+                sub2_files = [f for f in input_path.glob('*.srt')
+                             if re.search(sub2_pattern, f.name, re.IGNORECASE)]
+                self.logger.debug('Sub 1', sub1_files)
+                self.logger.debug('Sub 2', sub2_files)
+                
+                # Test episode number extraction
+                sub1_episodes = []
+                sub2_episodes = []
+                
+                for f in sub1_files[:5]:  # Test first 5 files
+                    match = re.search(sub1_ep_pattern, f.stem)
+                    if match:
+                        sub1_episodes.append((f.name, match.group(1)))
+                        
+                for f in sub2_files[:5]:  # Test first 5 files
+                    match = re.search(sub2_ep_pattern, f.stem)
+                    if match:
+                        sub2_episodes.append((f.name, match.group(1)))
+                
+                # Show results
+                msg = QMessageBox()
+                msg.setWindowTitle("Pattern Test Results")
+                
+                results = [
+                    f"Sub1 Pattern ({sub1_pattern}):",
+                    f"Found {len(sub1_files)} matching files",
+                    "\nExample matches with episode numbers:",
+                    *[f"{name} -> Episode {ep}" for name, ep in sub1_episodes],
+                    "\nSub2 Pattern ({sub2_pattern}):",
+                    f"Found {len(sub2_files)} matching files",
+                    "\nExample matches with episode numbers:",
+                    *[f"{name} -> Episode {ep}" for name, ep in sub2_episodes]
+                ]
+                
+                msg.setText("\n".join(results))
+                msg.exec()
+                
+            except re.error as e:
+                self.logger.error(f"Invalid regular expression: {e}")
+                QMessageBox.critical(self, "Error", f"Invalid regular expression: {e}")
+            except Exception as e:
+                self.logger.error(f"Error testing patterns: {e}")
+                QMessageBox.critical(self, "Error", f"Error testing patterns: {e}")
 
     def load_previous_config(self):
         """Show a dialog to select and load a previous configuration."""

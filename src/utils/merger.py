@@ -95,15 +95,23 @@ class Merger():
 
     def _is_svg_path(self, text):
         """
-        Check if the text contains an SVG path.
+        Check if the text contains an SVG path or ASS tags.
         
         Args:
             text (str): The subtitle text
             
         Returns:
-            bool: True if the text contains an SVG path, False otherwise
+            bool: True if the text contains an SVG path or ASS tags, False otherwise
         """
-        return bool(re.search(r'{\an\d}m\s+\d+\.\d+\s+\d+\.\d+\s+b', text))
+        # Check for SVG paths and ASS tags
+        svg_patterns = [
+            r'{\an\d}m\s+\d+\.\d+\s+\d+\.\d+\s+b',  # SVG path
+            r'{\\p\d}',  # ASS drawing mode
+            r'{\an\d}',  # ASS position tags
+            r'{\\[^}]+}'  # Any other ASS tags
+        ]
+        
+        return any(bool(re.search(pattern, text)) for pattern in svg_patterns)
 
     def _set_subtitle_style(self, subtitle, color=None, size=None, bold=False, preserve_svg=False):
         """
@@ -209,25 +217,22 @@ class Merger():
                 if not text:
                     continue
                 
-                # Check if this is an SVG path
+                # Check if this is an SVG/ASS line
                 is_svg = self._is_svg_path(text)
                 
-                # If SVG filtering is enabled, handle SVG paths specially
+                # Skip SVG/ASS lines if filtering is enabled
                 if self.svg_filter_enabled and is_svg:
-                    # Skip duplicate SVG entries for the same timestamp
-                    if timestamp in self.seen_svg_timestamps:
-                        continue
-                    self.seen_svg_timestamps.add(timestamp)
-                
-                # Skip text entries if remove_text_entries is True and this is not an SVG path
-                if self.remove_text_entries and not is_svg:
                     continue
+                
+                # Remove any remaining ASS tags if they exist
+                if self.svg_filter_enabled:
+                    text = re.sub(r'{[^}]+}', '', text)  # Remove ASS tags
                 
                 # Apply style (color and size) to text
                 text = self._set_subtitle_style(text, color, size, bold, preserve_svg)
                 
                 # Add position if needed
-                if top and not is_svg:  # Don't add top position to SVG paths as they have their own positioning
+                if top and not is_svg:
                     text = self._put_subtitle_top(text)
                     
                 # Format final text with timestamp

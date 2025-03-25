@@ -1,17 +1,20 @@
+#!/usr/bin/env python
+# Single files tab - A tab for merging individual subtitle files
+
 import os
 import shutil
 import subprocess
 import datetime
 import re
 from pathlib import Path
-from PyQt5.QtWidgets import (
+from PyQt6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QGroupBox, QLabel, QPushButton,
     QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QSlider,
-    QWidget, QGridLayout, QFileDialog
+    QWidget, QGridLayout, QFileDialog, QMessageBox
 )
-from PyQt5.QtCore import Qt
+from PyQt6.QtCore import Qt
 from .base_tab import BaseTab
-from ..utils.merger import Merger, WHITE
+from ..utils.merger import Merger, WHITE, YELLOW
 from ..utils.ass_converter import create_ass_from_srt
 
 class SingleFilesTab(BaseTab):
