@@ -224,6 +224,10 @@ def create_patterns_from_japanese_groups(groups, jp_files, non_jp_files, logger)
     # Process all files to extract base names and episode numbers
     for file_list in [jp_files, non_jp_files]:
         for filename in file_list:
+            # Skip already merged files
+            if '.merged.srt' in filename or '-Sync.srt' in filename:
+                continue
+                
             # Try to find numbers that could be episode numbers
             number_match = re.search(r'(?:^|\D)(\d{1,3})(?:\D|$)', filename)
             if number_match:
@@ -265,22 +269,41 @@ def create_patterns_from_japanese_groups(groups, jp_files, non_jp_files, logger)
                 best_score = score
                 best_base_name = base_name
     
+    # If we found a good base name, create patterns
     if best_base_name:
         logger.info(f"Found matching base name: {best_base_name}")
-        # Create patterns using the base name
-        # For Japanese files (usually have higher percentage of Japanese chars)
-        sub1_pattern = re.escape(best_base_name)
-        # For non-Japanese files
-        sub2_pattern = re.escape(best_base_name)
         
-        # Extract the episode number pattern from the first matching file
-        sample_file = next(f for f in jp_files if best_base_name in f)
-        number_match = re.search(r'(?:^|\D)(\d{1,3})(?:\D|$)', sample_file)
-        if number_match:
-            # Get the characters immediately before and after the number
-            pre_num = sample_file[max(0, number_match.start(1)-1):number_match.start(1)]
-            post_num = sample_file[number_match.end(1):min(len(sample_file), number_match.end(1)+1)]
-            ep_pattern = f'{re.escape(pre_num)}(\\d+){re.escape(post_num)}'
+        # For Japanese files, check multiple patterns
+        jp_patterns = []
+        if any('.ja[cc].srt' in f for f in jp_files):
+            jp_patterns.append(r'\.ja\[cc\]\.srt$')
+        if any('.jp.srt' in f for f in jp_files):
+            jp_patterns.append(r'\.jp\.srt$')
+        if any('.ja.srt' in f for f in jp_files):
+            jp_patterns.append(r'\.ja\.srt$')
+        if any('dialogue.srt' in f for f in jp_files):
+            jp_patterns.append(r'\.dialogue\.srt$')
+            
+        # For English files, check multiple patterns
+        en_patterns = []
+        if any('.2.english.srt' in f for f in non_jp_files):
+            en_patterns.append(r'\.2\.english\.srt$')
+        if any('.en.srt' in f for f in non_jp_files):
+            en_patterns.append(r'\.en\.srt$')
+        if any('.eng.srt' in f for f in non_jp_files):
+            en_patterns.append(r'\.eng\.srt$')
+        if any('dialogue.srt' in f for f in non_jp_files):
+            en_patterns.append(r'\.dialogue\.srt$')
+        
+        # Combine patterns with OR operator
+        sub1_pattern = '|'.join(jp_patterns) if jp_patterns else r'\.ja(?:\[cc\])?\.srt$'
+        sub2_pattern = '|'.join(en_patterns) if en_patterns else r'\.(?:en|eng|english)\.srt$'
+        
+        # Extract episode pattern based on file format
+        if any('S01E' in f for f in jp_files + non_jp_files):
+            ep_pattern = r'S01E(\d+)'
+        elif any(' - ' in f and '[' in f for f in jp_files + non_jp_files):
+            ep_pattern = r' - (\d+) \['
         else:
             ep_pattern = r'(\d{1,3})'
             
@@ -293,10 +316,10 @@ def create_patterns_from_japanese_groups(groups, jp_files, non_jp_files, logger)
     
     # Fallback to simple patterns if no good base name found
     return {
-        "sub1_pattern": "sub1",
-        "sub2_pattern": "sub2",
-        "sub1_ep_pattern": r'(\d{1,3})',
-        "sub2_ep_pattern": r'(\d{1,3})'
+        "sub1_pattern": r'\.(?:ja(?:\[cc\])?|jp|japanese)\.srt$',
+        "sub2_pattern": r'\.(?:en|eng|english|2\.english)\.srt$',
+        "sub1_ep_pattern": r'(?:S01E|E)?(\d{1,3})',
+        "sub2_ep_pattern": r'(?:S01E|E)?(\d{1,3})'
     }
 
 def create_patterns_from_general_groups(groups, all_files, logger):
