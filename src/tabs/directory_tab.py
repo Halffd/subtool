@@ -918,38 +918,37 @@ class DirectoryTab(BaseTab):
             QMessageBox.critical(self, "Error", f"Error during merge operation: {str(e)}")
 
     def create_new_config_file(self, directory_path):
-        """Create a new configuration file with the basename of the directory and date."""
+        """Create a new configuration file for the given directory."""
         try:
-            # Get the basename of the directory
-            dir_basename = Path(directory_path).name
+            # Generate unique config name based on directory
+            dir_name = Path(directory_path).name
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            config_name = f"config_{dir_name.replace(' ', '_')}_{timestamp}.json"
             
-            # Clean the basename to make it suitable for a filename
-            # Replace spaces and special characters with underscores
-            clean_basename = re.sub(r'[^\w\-]', '_', dir_basename)
-            
-            # Get current date and time
-            now = datetime.datetime.now()
-            date_str = now.strftime("%Y%m%d_%H%M%S")
-            
-            # Create a new config filename
-            new_config_filename = f"config_{clean_basename}_{date_str}.json"
-            new_config_path = self.config_dir / new_config_filename
+            # Create new config with default values
+            config = {
+                'input_directory': directory_path,
+                'video_directory': '',
+                'sub1_pattern': r'\.JA\.srt$',  # Match Japanese subtitles
+                'sub2_pattern': r'\.2\.fff\.srt$',  # Match English subtitles
+                'sub1_ep_pattern': r'S01E(\d+)',  # Extract episode number after S01E
+                'sub2_ep_pattern': r'- (\d+) \[',  # Extract episode number between - and [
+                'sub1_font_size': 19,
+                'sub2_font_size': 17,
+                'sub1_color': 'Yellow',
+                'sub2_color': 'White',
+                'sub1_bold': False,
+                'sub2_bold': False,
+                'enable_svg_filtering': False,
+                'remove_text_entries': False,
+                'preserve_svg': True,
+                'auto_detect_mode': False
+            }
             
             # Save current settings to the new file
-            self.save_settings()
+            self.save_settings(config)
             
-            # Copy the current settings file to the new file
-            if self.settings_file.exists():
-                with open(self.settings_file, 'r', encoding='utf-8') as src_file:
-                    settings_data = src_file.read()
-                    
-                with open(new_config_path, 'w', encoding='utf-8') as dest_file:
-                    dest_file.write(settings_data)
-                
-                self.logger.info(f"Created new configuration file: {new_config_filename}")
-            else:
-                self.logger.warning("No settings file exists to copy")
-                
+            self.logger.info(f"Created new configuration file: {config_name}")
         except Exception as e:
             self.logger.error(f"Error creating new configuration file: {e}")
 
@@ -1406,4 +1405,63 @@ class DirectoryTab(BaseTab):
                 self.save_settings()
         except Exception as e:
             self.logger.error(f"Error saving value to settings: {e}")
+
+    def match_subtitle_pairs(self, files, patterns, logger):
+        """Match subtitle files into pairs based on patterns and episode numbers."""
+        sub1_files = []
+        sub2_files = []
+        episode_pairs = {}
+        
+        # First pass: Group files by type (sub1/sub2)
+        for file in files:
+            # Always match MKV episode patterns as sub2
+            if '.mkv' in str(file).lower():
+                sub2_files.append(file)
+            elif re.search(patterns['sub1_pattern'], str(file), re.IGNORECASE):
+                sub1_files.append(file)
+            elif re.search(patterns['sub2_pattern'], str(file), re.IGNORECASE):
+                sub2_files.append(file)
+        
+        logger.info(f"Found {len(sub1_files)} sub1 (Japanese) files and {len(sub2_files)} sub2 (non-Japanese) files")
+        
+        # Log matched files for debugging
+        logger.debug("Sub1 (Japanese) matched files:")
+        for f in sub1_files:
+            logger.debug(f"  - {f.name}")
+        logger.debug("Sub2 (non-Japanese) matched files:")
+        for f in sub2_files:
+            logger.debug(f"  - {f.name}")
+        
+        # Second pass: Match by episode number
+        for sub1_file in sub1_files:
+            # Try to extract episode number using sub1 pattern
+            ep_match = re.search(patterns['sub1_ep_pattern'], sub1_file.stem)
+            if ep_match:
+                ep_num = ep_match.group(1)
+                if ep_num not in episode_pairs:
+                    episode_pairs[ep_num] = {'sub1': None, 'sub2': None}
+                episode_pairs[ep_num]['sub1'] = sub1_file
+        
+        for sub2_file in sub2_files:
+            # Try to extract episode number using sub2 pattern
+            ep_match = re.search(patterns['sub2_ep_pattern'], sub2_file.stem)
+            if ep_match:
+                ep_num = ep_match.group(1)
+                if ep_num not in episode_pairs:
+                    episode_pairs[ep_num] = {'sub1': None, 'sub2': None}
+                episode_pairs[ep_num]['sub2'] = sub2_file
+        
+        # Create final pairs, filtering out incomplete matches
+        matched_pairs = {}
+        for ep_num, pair in episode_pairs.items():
+            if pair['sub1'] and pair['sub2']:
+                matched_pairs[ep_num] = pair
+            else:
+                if pair['sub1']:
+                    logger.warning(f"Found sub1 but no sub2 for episode {ep_num}: {pair['sub1'].name}")
+                if pair['sub2']:
+                    logger.warning(f"Found sub2 but no sub1 for episode {ep_num}: {pair['sub2'].name}")
+        
+        logger.info(f"Found {len(matched_pairs)} matched subtitle pairs")
+        return matched_pairs
 

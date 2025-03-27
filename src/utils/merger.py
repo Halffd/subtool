@@ -5,6 +5,7 @@ import datetime
 import codecs
 import re
 import logging
+import os
 
 RED = '#FF003B'
 BLUE = '#00ADFF'
@@ -217,39 +218,34 @@ class Merger():
                 if not text:
                     continue
                 
-                # Check if this is an SVG/ASS line
+                # Check if this is an SVG path
                 is_svg = self._is_svg_path(text)
                 
-                # Skip SVG/ASS lines if filtering is enabled
-                if self.svg_filter_enabled and is_svg:
+                # Handle SVG filtering
+                if is_svg:
+                    # Skip duplicate SVG entries for the same timestamp if filtering is enabled
+                    if self.svg_filter_enabled and time in self.seen_svg_timestamps:
+                        continue
+                    self.seen_svg_timestamps.add(time)
+                elif self.remove_text_entries:
+                    # Skip text entries if remove_text_entries is True
                     continue
-                
-                # Remove any remaining ASS tags if they exist
-                if self.svg_filter_enabled:
-                    text = re.sub(r'{[^}]+}', '', text)  # Remove ASS tags
                 
                 # Apply style (color and size) to text
                 text = self._set_subtitle_style(text, color, size, bold, preserve_svg)
                 
                 # Add position if needed
-                if top and not is_svg:
+                if top and not is_svg:  # Don't add top position to SVG paths
                     text = self._put_subtitle_top(text)
                     
                 # Format final text with timestamp
-                text_and_time = f'{time}\n{text}'
+                subtitle['dialogs'][timestamp] = time + '\n' + text
                 
-                # Handle multiple dialogs at same timestamp
-                prev_dialog = subtitle['dialogs'].get(timestamp, '')
-                prev_dialog_without_timestamp = re.sub(TIME_PATTERN, '', prev_dialog)
-                
-                if re.findall(TIME_PATTERN, text_and_time):
-                    time = re.findall(TIME_PATTERN, text_and_time)[0]
+                if timestamp not in self.timestamps:
+                    self.timestamps.append(timestamp)
                     
-                subtitle['dialogs'][timestamp] = text_and_time + prev_dialog_without_timestamp
-                self.timestamps.append(timestamp)
-                
             except Exception as e:
-                continue
+                print('Error in processing dialog: %s' % (e))
 
     def _encode(self, text):
         codec = self.output_encoding
@@ -330,50 +326,51 @@ class Merger():
             return self.output_path + self.output_name
         return self.output_path + '/' + self.output_name
 
-    def merge(self):
-        # Reset SVG timestamp tracking before merging
-        self.seen_svg_timestamps = set()
+    def merge(self, first_subtitle, second_subtitle):
+        """Merge two subtitle files into one."""
+        self.seen_svg_timestamps = set()  # Reset SVG timestamp tracking
         
-        self.lines = []
-        self.timestamps = list(set(self.timestamps))
+        # Process first subtitle
+        first_sub = {'dialogs': {}}
+        first_dialogs = self._get_dialogs(first_subtitle)
+        self._split_dialogs(first_dialogs, first_sub, color=self.first_color, size=self.first_size, bold=self.first_bold, preserve_svg=True)
+        
+        if not first_sub['dialogs']:
+            logging.warning("No entries found in first subtitle after filtering")
+            return False
+            
+        # Process second subtitle
+        second_sub = {'dialogs': {}}
+        second_dialogs = self._get_dialogs(second_subtitle)
+        self._split_dialogs(second_dialogs, second_sub, color=self.second_color, size=self.second_size, top=True, bold=self.second_bold, preserve_svg=True)
+        
+        if not second_sub['dialogs']:
+            logging.warning("No entries found in second subtitle after filtering")
+            return False
+            
+        # Sort timestamps
         self.timestamps.sort()
-        count = 1
-        for t in self.timestamps:
-            for sub in self.subtitles:
-                if t in sub['dialogs'].keys():
-                    line = self._encode(sub['dialogs'][t].replace('\n\n', ''))
-                    if count == 1:
-                        byteOfCount = self._insert_bom(
-                            bytes(str(count), encoding=self.output_encoding),
-                            self.output_encoding
-                        )
-                    else:
-                        byteOfCount = '\n'.encode(
-                            self.output_encoding) + bytes(str(count), encoding=self.output_encoding)
-                    if sub['dialogs'][t].endswith('\n') != True:
-                        sub['dialogs'][t] = sub['dialogs'][t] + '\n'
-                    dialog = byteOfCount + \
-                        '\n'.encode(self.output_encoding) + line
-                    self.lines.append(dialog)
-                    count += 1
         
-        # Check if lines list is not empty before accessing its elements
-        if self.lines:
-            if self.lines[-1].endswith(b'\x00\n\x00'):
-                self.lines[-1] = self.lines[-1][:-3] + b'\x00'
-            if self.lines[-1].endswith(b'\n'):
-                self.lines[-1] = self.lines[-1][:-1] + b''
+        # Create output directory if it doesn't exist
+        os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
         
-        # Handle the case when no lines were generated (all entries were filtered out)
-        if not self.lines:
-            self.logger.warning("No subtitle entries remained after filtering. Creating empty output file.")
-            # Create an empty file or a file with a message
-            empty_content = "1\n00:00:01,000 --> 00:00:05,000\nNo subtitle entries remained after filtering.\n"
-            self.lines.append(self._encode(empty_content))
+        # Write merged subtitles
+        with open(self.output_path, 'w', encoding=self.encoding) as f:
+            f.write('WEBVTT\n\n')
+            for i, timestamp in enumerate(self.timestamps, 1):
+                first_dialog = first_sub['dialogs'].get(timestamp, '')
+                second_dialog = second_sub['dialogs'].get(timestamp, '')
+                
+                if first_dialog or second_dialog:
+                    f.write(f'{i}\n')
+                    if first_dialog:
+                        f.write(first_dialog + '\n')
+                    if second_dialog:
+                        f.write(second_dialog + '\n')
+                    f.write('\n')
         
-        with open(self.get_output_path(), 'w', encoding=self.output_encoding) as output:
-            output.buffer.writelines(self.lines)
-            print("'%s'" % (output.name), 'created successfully.')
+        logging.info(f"Successfully merged subtitles to {self.output_path}")
+        return True
 
 
 # How to use?

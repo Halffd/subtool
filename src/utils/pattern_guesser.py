@@ -389,51 +389,66 @@ def detect_episode_patterns(files, patterns, logger):
     """Detect episode number patterns in filenames."""
     # Known episode number formats to try
     episode_formats = [
-        (r'[Ss](\d+)[Ee](\d+)', "S%sE%s format"),  # S01E02
-        (r'(\d+)x(\d+)', "%sx%s format"),  # 01x02
-        (r'[Ee]p(?:isode)?[\s._-]*(\d+)', "Episode %s"),  # Episode 5 or Ep5
-        (r'[\s._-](\d{2,3})(?:[\s._-]|$)', "Simple number %s"),  # " 05 " or "_05_"
-        (r'(?:^|\s|_|-)\[?(\d{2,3})\]?(?:\s|$|\.)', "Bracketed number [05]")  # [05] or just 05
+        # For Japanese files (SxxExx format)
+        (r'[Ss](\d+)[Ee](\d+)', "SxxExx format"),
+        
+        # For English files (various formats)
+        (r'(?:^|\s|_|-)\s*(\d{1,2})\s*(?:\s|$|\]|\[)', "Number between delimiters"),
+        (r'[\s._-](\d{1,2})(?:[\s._-]|$)', "Simple number"),
+        (r'[Ee]p(?:isode)?[\s._-]*(\d{1,2})', "Episode format"),
+        (r'(?:^|\s|_|-)\[?(\d{1,2})\]?(?:\s|$|\.)', "Bracketed number")
     ]
     
-    sub1_pattern = patterns.get('sub1_pattern', '')
-    sub2_pattern = patterns.get('sub2_pattern', '')
-    
     # Find files matching each pattern
-    sub1_files = [f for f in files if re.search(sub1_pattern, f.name, re.IGNORECASE)]
-    sub2_files = [f for f in files if re.search(sub2_pattern, f.name, re.IGNORECASE)]
+    sub1_files = [f for f in files if re.search(patterns.get('sub1_pattern', ''), f.name, re.IGNORECASE)]
+    sub2_files = [f for f in files if re.search(patterns.get('sub2_pattern', ''), f.name, re.IGNORECASE)]
     
-    # Function to determine the best episode pattern for a group of files
     def find_episode_pattern(file_group):
         if not file_group:
-            return r'(?:S(\d+))?[^\d]+(\d+)', 0  # Default pattern with no matches
+            return r'(\d{1,2})', 0
             
         # Count matches for each pattern
         pattern_matches = {}
+        episode_numbers = {}
+        
         for pattern, desc in episode_formats:
             matches = 0
+            current_episodes = set()
+            
             for file in file_group:
-                if re.search(pattern, file.name, re.IGNORECASE):
-                    matches += 1
-            pattern_matches[pattern] = matches
+                match = re.search(pattern, file.name)
+                if match:
+                    # Get episode number from last group
+                    ep_num = int(match.group(match.lastindex))
+                    if 1 <= ep_num <= 99:  # Validate episode number
+                        matches += 1
+                        current_episodes.add(ep_num)
+            
+            if matches > 0:
+                # Score based on sequential episodes and valid range
+                episode_list = sorted(current_episodes)
+                sequential_score = sum(1 for i in range(len(episode_list)-1) 
+                                    if episode_list[i+1] == episode_list[i] + 1)
+                pattern_matches[pattern] = (matches, sequential_score)
+                episode_numbers[pattern] = current_episodes
         
-        # Find pattern with most matches
-        best_pattern, max_matches = max(pattern_matches.items(), key=lambda x: x[1])
+        # Find best pattern
+        best_pattern = None
+        best_score = (-1, -1)  # (matches, sequential_score)
         
-        # If no good matches, try a more generic pattern
-        if max_matches < len(file_group) * 0.5:
-            # Check for SxxExx format specifically
-            if any("S" in f.name.upper() and "E" in f.name.upper() for f in file_group):
-                return r'[Ss](\d+)[Ee](\d+)', max_matches
-            else:
-                # Most generic pattern for episode number
-                return r'(?:S(\d+))?[^\d]+(\d+)', max_matches
-        
-        return best_pattern, max_matches
+        for pattern, (matches, sequential_score) in pattern_matches.items():
+            score = (matches, sequential_score)
+            if score > best_score:
+                best_score = score
+                best_pattern = pattern
+                
+        return best_pattern or r'(\d{1,2})', best_score[0]
     
     # Find best patterns for each group
     sub1_ep_pattern, sub1_matches = find_episode_pattern(sub1_files)
     sub2_ep_pattern, sub2_matches = find_episode_pattern(sub2_files)
+    
+    logger.debug(f"Detected episode patterns - Sub1: {sub1_ep_pattern} ({sub1_matches} matches), Sub2: {sub2_ep_pattern} ({sub2_matches} matches)")
     
     return {
         "sub1_ep_pattern": sub1_ep_pattern,
