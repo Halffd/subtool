@@ -485,9 +485,9 @@ class DirectoryTab(BaseTab):
                                 # If filename has "E" pattern but pattern doesn't capture season, try to find it
                                 if has_e_pattern:
                                     season_match = re.search(r'S(\d+)', filename, re.IGNORECASE)
-                                    season_num = season_match.group(1) if season_match else '1'
+                                    season_num = season_match.group(1) if season_match else '01'
                                     return season_num, match.group(1)
-                                return '1', match.group(1)
+                                return '01', match.group(1)
                             # Assume season and episode if two groups
                             elif len(match.groups()) == 2:
                                 return match.group(1), match.group(2)
@@ -524,17 +524,17 @@ class DirectoryTab(BaseTab):
                 # Check for numbers at the end of the filename
                 end_number_match = re.search(r'[_\s.-](\d{1,3})(?:\b|$)', filename)
                 if end_number_match:
-                    return '1', end_number_match.group(1)
+                    return '01', end_number_match.group(1)
                 
                 # Check for any numbers (2-3 digits) that might be an episode
                 any_number_match = re.search(r'(?<!\d)(\d{2,3})(?!\d)', filename)
                 if any_number_match:
-                    return '1', any_number_match.group(1)
+                    return '01', any_number_match.group(1)
                 
                 # Check for any number as a last resort
                 any_number = re.search(r'(\d+)', filename)
                 if any_number:
-                    return '1', any_number.group(1)
+                    return '01', any_number.group(1)
 
                 return None, None
             
@@ -1428,7 +1428,7 @@ class DirectoryTab(BaseTab):
 
     def match_subtitle_pairs(self, files, patterns, logger):
         """Match subtitle files into pairs based on patterns and episode numbers."""
-        episode_subs = {}  # Use just episode number as key
+        episode_subs = {}  # Use SxxExx format as key
         sub1_files = []
         sub2_files = []
         
@@ -1448,33 +1448,41 @@ class DirectoryTab(BaseTab):
             try:
                 # Try to extract episode number using various patterns
                 ep_num = None
+                season_num = '1'  # Default season
                 
-                # Try configured pattern first
-                ep_match = re.search(patterns['sub1_ep_pattern'], sub1.stem)
-                if ep_match:
-                    ep_num = ep_match.group(1)
-                
-                # If no match, try common patterns
-                if not ep_num:
-                    # Try space-number-space pattern
-                    ep_match = re.search(r'\s(\d+)\s', sub1.stem)
+                # Try SxxExx pattern first
+                sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', sub1.stem)
+                if sxxexx_match:
+                    season_num = sxxexx_match.group(1)
+                    ep_num = sxxexx_match.group(2)
+                else:
+                    # Try configured pattern
+                    ep_match = re.search(patterns['sub1_ep_pattern'], sub1.stem)
                     if ep_match:
                         ep_num = ep_match.group(1)
                     else:
-                        # Try E01 pattern
-                        ep_match = re.search(r'[Ee](\d+)', sub1.stem)
+                        # Try common patterns
+                        # Try space-number-space pattern
+                        ep_match = re.search(r'\s(\d+)\s', sub1.stem)
                         if ep_match:
                             ep_num = ep_match.group(1)
                         else:
-                            # Try any number as last resort
-                            ep_match = re.search(r'(\d+)', sub1.stem)
+                            # Try E01 pattern
+                            ep_match = re.search(r'[Ee](\d+)', sub1.stem)
                             if ep_match:
                                 ep_num = ep_match.group(1)
+                            else:
+                                # Try any number as last resort
+                                ep_match = re.search(r'(\d+)', sub1.stem)
+                                if ep_match:
+                                    ep_num = ep_match.group(1)
                 
                 if ep_num:
-                    # Store sub1 file with its episode number
-                    episode_subs[ep_num] = {'sub1': sub1}
-                    logger.debug(f"Found sub1 for episode {ep_num}: {sub1.name}")
+                    # Create key in SxxExx format
+                    ep_key = f"S{season_num}E{ep_num}"
+                    # Store sub1 file with its episode key
+                    episode_subs[ep_key] = {'sub1': sub1, 'season': season_num, 'episode': ep_num}
+                    logger.debug(f"Found sub1 for {ep_key}: {sub1.name}")
                 
             except Exception as e:
                 logger.error(f"Error processing sub1 file {sub1}: {e}")
@@ -1484,32 +1492,45 @@ class DirectoryTab(BaseTab):
             try:
                 # Try to extract episode number using same patterns
                 ep_num = None
+                season_num = '01'  # Default season
                 
-                # Try configured pattern first
-                ep_match = re.search(patterns['sub2_ep_pattern'], sub2.stem)
-                if ep_match:
-                    ep_num = ep_match.group(1)
-                
-                # If no match, try common patterns
-                if not ep_num:
-                    # Try space-number-space pattern
-                    ep_match = re.search(r'\s(\d+)\s', sub2.stem)
+                # Try SxxExx pattern first
+                sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', sub2.stem)
+                if sxxexx_match:
+                    season_num = sxxexx_match.group(1)
+                    ep_num = sxxexx_match.group(2)
+                else:
+                    # Try configured pattern
+                    ep_match = re.search(patterns['sub2_ep_pattern'], sub2.stem)
                     if ep_match:
                         ep_num = ep_match.group(1)
                     else:
-                        # Try E01 pattern
-                        ep_match = re.search(r'[Ee](\d+)', sub2.stem)
+                        # Try common patterns
+                        # Try space-number-space pattern
+                        ep_match = re.search(r'\s(\d+)\s', sub2.stem)
                         if ep_match:
                             ep_num = ep_match.group(1)
                         else:
-                            # Try any number as last resort
-                            ep_match = re.search(r'(\d+)', sub2.stem)
+                            # Try E01 pattern
+                            ep_match = re.search(r'[Ee](\d+)', sub2.stem)
                             if ep_match:
                                 ep_num = ep_match.group(1)
+                            else:
+                                # Try any number as last resort
+                                ep_match = re.search(r'(\d+)', sub2.stem)
+                                if ep_match:
+                                    ep_num = ep_match.group(1)
                 
-                if ep_num and ep_num in episode_subs:
-                    episode_subs[ep_num]['sub2'] = sub2
-                    logger.debug(f"Found sub2 for episode {ep_num}: {sub2.name}")
+                if ep_num:
+                    # Create key in SxxExx format
+                    ep_key = f"S{season_num}E{ep_num}"
+                    if ep_key in episode_subs:
+                        episode_subs[ep_key]['sub2'] = sub2
+                        logger.debug(f"Found sub2 for {ep_key}: {sub2.name}")
+                    else:
+                        # Create new entry if it doesn't exist
+                        episode_subs[ep_key] = {'sub2': sub2, 'season': season_num, 'episode': ep_num}
+                        logger.debug(f"Created new entry for sub2 {ep_key}: {sub2.name}")
                 
             except Exception as e:
                 logger.error(f"Error processing sub2 file {sub2}: {e}")
@@ -1522,9 +1543,9 @@ class DirectoryTab(BaseTab):
             logger.warning("Some episodes are missing matching pairs:")
             for ep, data in episode_subs.items():
                 if 'sub1' in data and 'sub2' not in data:
-                    logger.warning(f"Episode {ep} missing sub2")
+                    logger.warning(f"{ep} missing sub2")
                 elif 'sub2' in data and 'sub1' not in data:
-                    logger.warning(f"Episode {ep} missing sub1")
+                    logger.warning(f"{ep} missing sub1")
         
         logger.info(f"Found {len(complete_matches)} complete subtitle pairs")
         return complete_matches
