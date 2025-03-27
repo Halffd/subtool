@@ -1,0 +1,6 @@
+                            # Extract episode number from sub2 file
+                            ep_match = re.search(patterns['sub2_ep_pattern'], sub2.stem)
+                            if ep_match:
+                                ep_num = ep_match.group(1)
+                                season_num = '1'  # Default to season 1
+                                ep_key = f'S{season_num}E{ep_num}' 

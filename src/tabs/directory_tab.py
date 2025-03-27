@@ -349,14 +349,30 @@ class DirectoryTab(BaseTab):
             sub2_episodes = []
             
             for f in sub1_files[:5]:  # Test first 5 files
-                match = re.search(sub1_ep_pattern, f.stem)
-                if match:
-                    sub1_episodes.append((f.name, match.group(1)))
+                # First try SxxExx pattern
+                sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', f.stem)
+                if sxxexx_match:
+                    season_num = sxxexx_match.group(1)
+                    ep_num = sxxexx_match.group(2)
+                    sub1_episodes.append((f.name, ep_num))
+                else:
+                    # Try configured pattern
+                    match = re.search(sub1_ep_pattern, f.stem)
+                    if match:
+                        sub1_episodes.append((f.name, match.group(1)))
                     
             for f in sub2_files[:5]:  # Test first 5 files
-                match = re.search(sub2_ep_pattern, f.stem)
-                if match:
-                    sub2_episodes.append((f.name, match.group(1)))
+                # First try SxxExx pattern
+                sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', f.stem)
+                if sxxexx_match:
+                    season_num = sxxexx_match.group(1)
+                    ep_num = sxxexx_match.group(2)
+                    sub2_episodes.append((f.name, ep_num))
+                else:
+                    # Try configured pattern
+                    match = re.search(sub2_ep_pattern, f.stem)
+                    if match:
+                        sub2_episodes.append((f.name, match.group(1)))
             
             # Show results
             msg = QMessageBox()
@@ -603,35 +619,45 @@ class DirectoryTab(BaseTab):
                     if sxxexx_match:
                         season_num = sxxexx_match.group(1)
                         ep_num = sxxexx_match.group(2)
-                    else:
-                        # Otherwise use the extract_episode_info function
-                        season_num, ep_num = extract_episode_info(sub1.stem, sub1_ep_pattern)
-                    
-                        # Try to extract from filename if not found in stem
-                        if season_num is None or ep_num is None:
-                            # Look for numbers in the filename
-                            number_matches = re.findall(r'\d+', sub1.stem)
-                            if number_matches and len(number_matches) >= 1:
-                                # Use the last number as episode if multiple numbers found
-                                ep_num = number_matches[-1]
-                                season_num = '1'  # Default season
-                            else:
-                                self.logger.warning(f"Could not extract episode info from sub1 file: {sub1.name}")
-                                continue
-                    
-                        # Create a unique key combining season and episode
                         ep_key = f"S{season_num}E{ep_num}"
-                        
                         if ep_key not in episode_subs:
                             episode_subs[ep_key] = {
                                 'sub1': sub1, 
                                 'season': season_num, 
                                 'episode': ep_num,
-                                'has_e_pattern': 'E' in sub1.stem.upper()
+                                'has_e_pattern': True
                             }
                             self.logger.debug(f"Found sub1 for {ep_key}: {sub1.name}")
+                        continue  # Skip to next file since we found a match
+                    
+                    # Otherwise use the extract_episode_info function
+                    season_num, ep_num = extract_episode_info(sub1.stem, sub1_ep_pattern)
+                    
+                    # Try to extract from filename if not found in stem
+                    if season_num is None or ep_num is None:
+                        # Look for numbers in the filename
+                        number_matches = re.findall(r'\d+', sub1.stem)
+                        if number_matches and len(number_matches) >= 1:
+                            # Use the last number as episode if multiple numbers found
+                            ep_num = number_matches[-1]
+                            season_num = '1'  # Default season
                         else:
-                            self.logger.warning(f"Duplicate sub1 for {ep_key}: {sub1.name}")
+                            self.logger.warning(f"Could not extract episode info from sub1 file: {sub1.name}")
+                            continue
+                    
+                    # Create a unique key combining season and episode
+                    ep_key = f"S{season_num}E{ep_num}"
+                    
+                    if ep_key not in episode_subs:
+                        episode_subs[ep_key] = {
+                            'sub1': sub1, 
+                            'season': season_num, 
+                            'episode': ep_num,
+                            'has_e_pattern': 'E' in sub1.stem.upper()
+                        }
+                        self.logger.debug(f"Found sub1 for {ep_key}: {sub1.name}")
+                    else:
+                        self.logger.warning(f"Duplicate sub1 for {ep_key}: {sub1.name}")
                 except Exception as e:
                     self.logger.error(f"Error processing sub1 file {sub1}: {e}")
             
@@ -644,52 +670,46 @@ class DirectoryTab(BaseTab):
                         season_num = sxxexx_match.group(1)
                         ep_num = sxxexx_match.group(2)
                     else:
-                        # Otherwise use the extract_episode_info function
-                        season_num, ep_num = extract_episode_info(sub2.stem, sub2_ep_pattern)
-                    
-                        # Try to extract from filename if not found in stem
-                        if season_num is None or ep_num is None:
-                            # First try other common patterns
-                            number_match = re.search(r'(\d+)[^0-9]+(\d+)', sub2.stem)
-                            if number_match:
-                                # Assume first number is season, second is episode
-                                season_num = number_match.group(1)
-                                ep_num = number_match.group(2)
-                            else:
-                                # Look for any numbers in the filename
-                                number_matches = re.findall(r'\d+', sub2.stem)
-                                if number_matches and len(number_matches) >= 1:
-                                    # Use the last number as episode if multiple numbers found
-                                    ep_num = number_matches[-1]
+                        # Try the configured pattern first
+                        ep_match = re.search(sub2_ep_pattern, sub2.stem)
+                        if ep_match:
+                            ep_num = ep_match.group(1)
+                            season_num = '01'  # Default season
+                        else:
+                            # Try common patterns in sequence
+                            common_patterns = [
+                                r'\s(\d+)\s',  # Space-number-space
+                                r'[Ee](\d+)',  # E01 format
+                                r'(\d+)',      # Any number
+                            ]
+                            
+                            for pattern in common_patterns:
+                                ep_match = re.search(pattern, sub2.stem)
+                                if ep_match:
+                                    ep_num = ep_match.group(1)
                                     season_num = '1'  # Default season
-                                else:
-                                    self.logger.warning(f"Could not extract episode info from sub2 file: {sub2.name}")
-                                    continue
+                                    break
+                            
+                            if not ep_match:
+                                self.logger.warning(f"Could not extract episode number from {sub2.name}")
+                                continue
                     
                     # Create a unique key combining season and episode
-                        ep_key = f"S{season_num}E{ep_num}"
-                        
-                        if ep_key in episode_subs:
-                            # If either file has E pattern, require season numbers to match
-                            if (episode_subs[ep_key].get('has_e_pattern', False) or 
-                                'E' in sub2.stem.upper()):
-                                if episode_subs[ep_key]['season'] != season_num:
-                                    self.logger.warning(
-                                        f"Season number mismatch for {ep_key}: "
-                                        f"sub1 season={episode_subs[ep_key]['season']}, "
-                                        f"sub2 season={season_num}"
-                                    )
-                                    continue
-                            episode_subs[ep_key]['sub2'] = sub2
-                            self.logger.debug(f"Found sub2 for {ep_key}: {sub2.name}")
-                        else:
-                            episode_subs[ep_key] = {
-                                'sub2': sub2, 
-                                'season': season_num, 
-                                'episode': ep_num,
-                                'has_e_pattern': 'E' in sub2.stem.upper()
-                            }
-                            self.logger.warning(f"Found sub2 but no sub1 for {ep_key}: {sub2.name}")
+                    ep_key = f"S{season_num}E{ep_num}"
+                    
+                    if ep_key in episode_subs:
+                        # If either file has E pattern, require season numbers to match
+                        if (episode_subs[ep_key].get('has_e_pattern', False) or 
+                            'E' in sub2.stem.upper()):
+                            if episode_subs[ep_key]['season'] != season_num:
+                                self.logger.warning(
+                                    f"Season number mismatch for {ep_key}: "
+                                    f"sub1 season={episode_subs[ep_key]['season']}, "
+                                    f"sub2 season={season_num}"
+                                )
+                                continue
+                        episode_subs[ep_key]['sub2'] = sub2
+                        self.logger.debug(f"Found sub2 for {ep_key}: {sub2.name}")
                 except Exception as e:
                     self.logger.error(f"Error processing sub2 file {sub2}: {e}")
 
@@ -1408,60 +1428,104 @@ class DirectoryTab(BaseTab):
 
     def match_subtitle_pairs(self, files, patterns, logger):
         """Match subtitle files into pairs based on patterns and episode numbers."""
+        episode_subs = {}  # Use just episode number as key
         sub1_files = []
         sub2_files = []
-        episode_pairs = {}
         
-        # First pass: Group files by type (sub1/sub2)
+        # First pass - group files by pattern
         for file in files:
-            # Always match MKV episode patterns as sub2
-            if '.mkv' in str(file).lower():
+            if '.mkv' in file.name.lower():
                 sub2_files.append(file)
-            elif re.search(patterns['sub1_pattern'], str(file), re.IGNORECASE):
+            elif re.search(patterns['sub1_pattern'], file.name, re.IGNORECASE):
                 sub1_files.append(file)
-            elif re.search(patterns['sub2_pattern'], str(file), re.IGNORECASE):
+            elif re.search(patterns['sub2_pattern'], file.name, re.IGNORECASE):
                 sub2_files.append(file)
         
-        logger.info(f"Found {len(sub1_files)} sub1 (Japanese) files and {len(sub2_files)} sub2 (non-Japanese) files")
+        logger.debug(f"Found {len(sub1_files)} sub1 files and {len(sub2_files)} sub2 files")
         
-        # Log matched files for debugging
-        logger.debug("Sub1 (Japanese) matched files:")
-        for f in sub1_files:
-            logger.debug(f"  - {f.name}")
-        logger.debug("Sub2 (non-Japanese) matched files:")
-        for f in sub2_files:
-            logger.debug(f"  - {f.name}")
+        # Second pass - match by episode number
+        for sub1 in sub1_files:
+            try:
+                # Try to extract episode number using various patterns
+                ep_num = None
+                
+                # Try configured pattern first
+                ep_match = re.search(patterns['sub1_ep_pattern'], sub1.stem)
+                if ep_match:
+                    ep_num = ep_match.group(1)
+                
+                # If no match, try common patterns
+                if not ep_num:
+                    # Try space-number-space pattern
+                    ep_match = re.search(r'\s(\d+)\s', sub1.stem)
+                    if ep_match:
+                        ep_num = ep_match.group(1)
+                    else:
+                        # Try E01 pattern
+                        ep_match = re.search(r'[Ee](\d+)', sub1.stem)
+                        if ep_match:
+                            ep_num = ep_match.group(1)
+                        else:
+                            # Try any number as last resort
+                            ep_match = re.search(r'(\d+)', sub1.stem)
+                            if ep_match:
+                                ep_num = ep_match.group(1)
+                
+                if ep_num:
+                    # Store sub1 file with its episode number
+                    episode_subs[ep_num] = {'sub1': sub1}
+                    logger.debug(f"Found sub1 for episode {ep_num}: {sub1.name}")
+                
+            except Exception as e:
+                logger.error(f"Error processing sub1 file {sub1}: {e}")
         
-        # Second pass: Match by episode number
-        for sub1_file in sub1_files:
-            # Try to extract episode number using sub1 pattern
-            ep_match = re.search(patterns['sub1_ep_pattern'], sub1_file.stem)
-            if ep_match:
-                ep_num = ep_match.group(1)
-                if ep_num not in episode_pairs:
-                    episode_pairs[ep_num] = {'sub1': None, 'sub2': None}
-                episode_pairs[ep_num]['sub1'] = sub1_file
+        # Match sub2 files with sub1 files
+        for sub2 in sub2_files:
+            try:
+                # Try to extract episode number using same patterns
+                ep_num = None
+                
+                # Try configured pattern first
+                ep_match = re.search(patterns['sub2_ep_pattern'], sub2.stem)
+                if ep_match:
+                    ep_num = ep_match.group(1)
+                
+                # If no match, try common patterns
+                if not ep_num:
+                    # Try space-number-space pattern
+                    ep_match = re.search(r'\s(\d+)\s', sub2.stem)
+                    if ep_match:
+                        ep_num = ep_match.group(1)
+                    else:
+                        # Try E01 pattern
+                        ep_match = re.search(r'[Ee](\d+)', sub2.stem)
+                        if ep_match:
+                            ep_num = ep_match.group(1)
+                        else:
+                            # Try any number as last resort
+                            ep_match = re.search(r'(\d+)', sub2.stem)
+                            if ep_match:
+                                ep_num = ep_match.group(1)
+                
+                if ep_num and ep_num in episode_subs:
+                    episode_subs[ep_num]['sub2'] = sub2
+                    logger.debug(f"Found sub2 for episode {ep_num}: {sub2.name}")
+                
+            except Exception as e:
+                logger.error(f"Error processing sub2 file {sub2}: {e}")
         
-        for sub2_file in sub2_files:
-            # Try to extract episode number using sub2 pattern
-            ep_match = re.search(patterns['sub2_ep_pattern'], sub2_file.stem)
-            if ep_match:
-                ep_num = ep_match.group(1)
-                if ep_num not in episode_pairs:
-                    episode_pairs[ep_num] = {'sub1': None, 'sub2': None}
-                episode_pairs[ep_num]['sub2'] = sub2_file
+        # Filter out incomplete matches and log warnings
+        complete_matches = {ep: data for ep, data in episode_subs.items() 
+                          if 'sub1' in data and 'sub2' in data}
         
-        # Create final pairs, filtering out incomplete matches
-        matched_pairs = {}
-        for ep_num, pair in episode_pairs.items():
-            if pair['sub1'] and pair['sub2']:
-                matched_pairs[ep_num] = pair
-            else:
-                if pair['sub1']:
-                    logger.warning(f"Found sub1 but no sub2 for episode {ep_num}: {pair['sub1'].name}")
-                if pair['sub2']:
-                    logger.warning(f"Found sub2 but no sub1 for episode {ep_num}: {pair['sub2'].name}")
+        if len(complete_matches) < len(episode_subs):
+            logger.warning("Some episodes are missing matching pairs:")
+            for ep, data in episode_subs.items():
+                if 'sub1' in data and 'sub2' not in data:
+                    logger.warning(f"Episode {ep} missing sub2")
+                elif 'sub2' in data and 'sub1' not in data:
+                    logger.warning(f"Episode {ep} missing sub1")
         
-        logger.info(f"Found {len(matched_pairs)} matched subtitle pairs")
-        return matched_pairs
+        logger.info(f"Found {len(complete_matches)} complete subtitle pairs")
+        return complete_matches
 
