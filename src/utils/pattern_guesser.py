@@ -275,6 +275,8 @@ def create_patterns_from_japanese_groups(groups, jp_files, non_jp_files, logger)
         
         # For Japanese files, check multiple patterns
         jp_patterns = []
+        if any('.jpn.srt' in f for f in jp_files):
+            jp_patterns.append(r'\.jpn\.srt$')
         if any('.ja[cc].srt' in f for f in jp_files):
             jp_patterns.append(r'\.ja\[cc\]\.srt$')
         if any('.jp.srt' in f for f in jp_files):
@@ -284,20 +286,46 @@ def create_patterns_from_japanese_groups(groups, jp_files, non_jp_files, logger)
         if any('dialogue.srt' in f for f in jp_files):
             jp_patterns.append(r'\.dialogue\.srt$')
             
-        # For English files, check multiple patterns
-        en_patterns = []
-        if any('.2.english.srt' in f for f in non_jp_files):
-            en_patterns.append(r'\.2\.english\.srt$')
-        if any('.en.srt' in f for f in non_jp_files):
-            en_patterns.append(r'\.en\.srt$')
+        # For non-Japanese files, check multiple patterns in order of priority
+        non_jp_patterns = []
+        
+        # Portuguese patterns (highest priority)
+        if any('.por.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.por\.srt$')
+        if any('.pt.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.pt\.srt$')
+        if any('.pt-br.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.pt-br\.srt$')
+        if any('.portuguese.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.portuguese\.srt$')
+            
+        # English patterns (second priority)
         if any('.eng.srt' in f for f in non_jp_files):
-            en_patterns.append(r'\.eng\.srt$')
-        if any('dialogue.srt' in f for f in non_jp_files):
-            en_patterns.append(r'\.dialogue\.srt$')
+            non_jp_patterns.append(r'\.eng\.srt$')
+        if any('.en.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.en\.srt$')
+        if any('.english.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.english\.srt$')
+            
+        # Other language patterns (lowest priority)
+        if any('.fre.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.fre\.srt$')
+        if any('.rus.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.rus\.srt$')
+        if any('.ind.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.ind\.srt$')
+        if any('.ara.srt' in f for f in non_jp_files):
+            non_jp_patterns.append(r'\.ara\.srt$')
+        
+        # If no patterns were found, use defaults
+        if not jp_patterns:
+            jp_patterns = [r'\.jpn\.srt$', r'\.ja(?:\[cc\])?\.srt$', r'\.jp\.srt$']
+        if not non_jp_patterns:
+            non_jp_patterns = [r'\.por\.srt$', r'\.pt(?:-br)?\.srt$', r'\.eng\.srt$', r'\.en\.srt$']
         
         # Combine patterns with OR operator
-        sub1_pattern = '|'.join(jp_patterns) if jp_patterns else r'\.ja(?:\[cc\])?\.srt$'
-        sub2_pattern = '|'.join(en_patterns) if en_patterns else r'\.(?:en|eng|english)\.srt$'
+        sub1_pattern = '|'.join(jp_patterns)
+        sub2_pattern = '|'.join(non_jp_patterns)
         
         # Extract episode pattern based on file format
         if any('S01E' in f for f in jp_files + non_jp_files):
@@ -316,8 +344,8 @@ def create_patterns_from_japanese_groups(groups, jp_files, non_jp_files, logger)
     
     # Fallback to simple patterns if no good base name found
     return {
-        "sub1_pattern": r'\.(?:ja(?:\[cc\])?|jp|japanese)\.srt$',
-        "sub2_pattern": r'\.(?:en|eng|english|2\.english)\.srt$',
+        "sub1_pattern": r'\.(?:jpn|ja(?:\[cc\])?|jp|japanese)\.srt$',
+        "sub2_pattern": r'\.(?:por|pt(?:-br)?|portuguese|eng|en|english)\.srt$',
         "sub1_ep_pattern": r'(?:S01E|E)?(\d{1,3})',
         "sub2_ep_pattern": r'(?:S01E|E)?(\d{1,3})'
     }
