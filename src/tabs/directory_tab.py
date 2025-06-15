@@ -143,16 +143,16 @@ class DirectoryTab(BaseTab):
 
         # Create pattern entries
         sub1_filter_layout, self.sub1_pattern_entry = self._create_pattern_entry(
-            "Sub1 (Japanese):",
+            "Sub1 (Main):",
             'sub1_pattern',
-            "Pattern to identify Japanese subtitle files"
+            "Pattern to identify main subtitle files"
         )
         self.manual_pattern_layout.addLayout(sub1_filter_layout)
 
         sub2_filter_layout, self.sub2_pattern_entry = self._create_pattern_entry(
-            "Sub2 (Non-Japanese):",
+            "Sub2 (Secondary):",
             'sub2_pattern',
-            "Pattern to identify non-Japanese subtitle files"
+            "Pattern to identify secondary subtitle files"
         )
         self.manual_pattern_layout.addLayout(sub2_filter_layout)
 
@@ -389,8 +389,8 @@ class DirectoryTab(BaseTab):
             # Show results
             msg = QMessageBox()
             msg.setWindowTitle("Pattern Test Results")
-            self.logger.debug('Sub 1', sub1_files)
-            self.logger.debug('Sub 2', sub2_files)
+            self.logger.debug('Sub 1: %s', sub1_files)
+            self.logger.debug('Sub 2: %s', sub2_files)
             results = [
                 f"Sub1 Pattern ({sub1_pattern}):",
                 f"Found {len(sub1_files)} matching files",
@@ -411,7 +411,48 @@ class DirectoryTab(BaseTab):
         except Exception as e:
             self.logger.error(f"Error testing patterns: {e}")
             QMessageBox.critical(self, "Error", f"Error testing patterns: {e}")
-
+    def find_episodes(self, sub_files, sub_ep_pattern, sub_name = 'sub', episode_subs = {}):
+        for sub1 in sub_files:
+            try:
+                # First try SxxExx pattern
+                sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', sub1.stem)
+                if sxxexx_match:
+                    season_num = sxxexx_match.group(1)
+                    ep_num = sxxexx_match.group(2)
+                else:
+                    # Try configured pattern
+                    match = re.search(sub_ep_pattern, sub1.stem)
+                    if match:
+                        ep_num = match.group(1)
+                        season_num = '01'  # Default season
+                    else:
+                        # Try extracting episode number from filename
+                        ep_match = re.search(r'(?:^|\s|_|-|\[)(\d{1,2})(?:\s|$|\]|\[|\()', sub1.stem)
+                        if ep_match:
+                            ep_num = ep_match.group(1)
+                            season_num = '01'  # Default season
+                        else:
+                            self.logger.warning(f"Could not extract episode info from sub1 file: {sub1.name}")
+                            continue
+                
+                # Create a unique key combining season and episode
+                ep_key = f"S{season_num}E{ep_num}"
+                
+                if ep_key not in episode_subs:
+                    episode_subs[ep_key] = {
+                        sub_name: sub1, 
+                        'season': season_num, 
+                        'episode': ep_num,
+                        'file_name': sub1.name
+                    }
+                    self.logger.debug(f"Found sub1 for {ep_key}: {sub1.name}")
+                elif sub_name != 'sub1' or sub_name != 'sub':
+                    episode_subs[ep_key][sub_name] = sub1
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing sub1 file {sub1}: {e}")
+        
+        return episode_subs
     def merge_subtitles(self):
         """Merge subtitle files in the directory based on patterns."""
         try:
@@ -470,77 +511,9 @@ class DirectoryTab(BaseTab):
             episode_subs = {}
             
             # Process sub1 files using the same episode extraction as test_patterns
-            for sub1 in sub1_files:
-                try:
-                    # First try SxxExx pattern
-                    sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', sub1.stem)
-                    if sxxexx_match:
-                        season_num = sxxexx_match.group(1)
-                        ep_num = sxxexx_match.group(2)
-                    else:
-                        # Try configured pattern
-                        match = re.search(sub1_ep_pattern, sub1.stem)
-                        if match:
-                            ep_num = match.group(1)
-                            season_num = '01'  # Default season
-                        else:
-                            # Try extracting episode number from filename
-                            ep_match = re.search(r'(?:^|\s|_|-|\[)(\d{1,2})(?:\s|$|\]|\[|\()', sub1.stem)
-                            if ep_match:
-                                ep_num = ep_match.group(1)
-                                season_num = '01'  # Default season
-                            else:
-                                self.logger.warning(f"Could not extract episode info from sub1 file: {sub1.name}")
-                                continue
-                    
-                    # Create a unique key combining season and episode
-                    ep_key = f"S{season_num}E{ep_num}"
-                    
-                    if ep_key not in episode_subs:
-                        episode_subs[ep_key] = {
-                            'sub1': sub1, 
-                            'season': season_num, 
-                            'episode': ep_num
-                        }
-                        self.logger.debug(f"Found sub1 for {ep_key}: {sub1.name}")
-                    else:
-                        self.logger.warning(f"Duplicate sub1 for {ep_key}: {sub1.name}")
-                except Exception as e:
-                    self.logger.error(f"Error processing sub1 file {sub1}: {e}")
-            
+            self.find_episodes(sub1_files, sub1_ep_pattern, 'sub1', episode_subs)
             # Process sub2 files using the same episode extraction as test_patterns
-            for sub2 in sub2_files:
-                try:
-                    # First try SxxExx pattern
-                    sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', sub2.stem)
-                    if sxxexx_match:
-                        season_num = sxxexx_match.group(1)
-                        ep_num = sxxexx_match.group(2)
-                    else:
-                        # Try configured pattern
-                        match = re.search(sub2_ep_pattern, sub2.stem)
-                        if match:
-                            ep_num = match.group(1)
-                            season_num = '01'  # Default season
-                        else:
-                            # Try extracting episode number from filename
-                            ep_match = re.search(r'(?:^|\s|_|-|\[)(\d{1,2})(?:\s|$|\]|\[|\()', sub2.stem)
-                            if ep_match:
-                                ep_num = ep_match.group(1)
-                                season_num = '01'  # Default season
-                            else:
-                                self.logger.warning(f"Could not extract episode info from sub2 file: {sub2.name}")
-                                continue
-                    
-                    # Create a unique key combining season and episode
-                    ep_key = f"S{season_num}E{ep_num}"
-                    
-                    if ep_key in episode_subs:
-                        episode_subs[ep_key]['sub2'] = sub2
-                        self.logger.debug(f"Found sub2 for {ep_key}: {sub2.name}")
-                except Exception as e:
-                    self.logger.error(f"Error processing sub2 file {sub2}: {e}")
-
+            self.find_episodes(sub2_files, sub2_ep_pattern, 'sub2', episode_subs)
             # Display summary of matched subtitles
             matched_pairs = [k for k, v in episode_subs.items() if 'sub1' in v and 'sub2' in v]
 
@@ -606,16 +579,15 @@ class DirectoryTab(BaseTab):
             self.logger.info(f"Found {len(video_files)} video files")
 
             # Process each video file
+            video_eps = self.find_episodes(video_files, sub2_ep_pattern)
             for video_file in video_files:
                 self.logger.debug(f"Found video file: {video_file.name}")
                 try:
-                    season_num, ep_num = self.extract_episode_info(video_file.stem)
-                    
-                    if season_num is None or ep_num is None:
-                        self.logger.warning(f"Could not extract episode info from {video_file.name}")
-                        continue
-                    
-                    ep_key = f"S{season_num}E{ep_num}"
+                    ep_key = ''
+                    for key, value in video_eps.items():
+                        if value['file_name'] == video_file.name:
+                            ep_key = key
+                            break
                     self.logger.debug(f"Extracted {ep_key} from {video_file.name}")
                     
                     if ep_key not in episode_subs:
@@ -1061,25 +1033,46 @@ class DirectoryTab(BaseTab):
 
     def save_settings(self, settings=None):
         """Save current settings."""
-        # Make sure settings attribute exists
-        if hasattr(self, 'settings'):
-            # Save auto detection mode
-            self.settings['auto_detect_mode'] = self.auto_detect_mode
+        try:
+            # First call the parent class's save_settings to handle common settings
+            super().save_settings(settings)
             
-            # Update with additional settings if provided
-            if settings:
-                self.settings.update(settings)
-            
-            # Save settings to file
-            try:
+            # Now handle directory tab specific settings
+            if hasattr(self, 'settings'):
+                # Save auto detection mode
+                self.settings['auto_detect_mode'] = self.auto_detect_mode
+                print(f"Auto detection mode: {self.auto_detect_mode}")
+                print(f"Has sub1_pattern_entry: {hasattr(self, 'sub1_pattern_entry')}")
+                print(f"Has sub2_pattern_entry: {hasattr(self, 'sub2_pattern_entry')}")
+                print(f"Has sub1_episode_pattern_entry: {hasattr(self, 'sub1_episode_pattern_entry')}")
+                print(f"Has sub2_episode_pattern_entry: {hasattr(self, 'sub2_episode_pattern_entry')}")
+                print(f"Has sub1_pattern: {hasattr(self, 'sub1_pattern')}")
+                print(f"Has sub2_pattern: {hasattr(self, 'sub2_pattern')}")
+                print(f"Has sub1_episode_pattern: {hasattr(self, 'sub1_episode_pattern')}")
+                print(f"Has sub2_episode_pattern: {hasattr(self, 'sub2_episode_pattern')}")
+                # Save file patterns if they exist
+                if self.sub1_pattern_entry is not None:
+                    self.settings['sub1_pattern'] = self.sub1_pattern_entry.text()
+                if self.sub2_pattern_entry is not None:
+                    self.settings['sub2_pattern'] = self.sub2_pattern_entry.text()
+                if self.sub1_episode_pattern_entry is not None:
+                    self.settings['sub1_episode_pattern'] = self.sub1_episode_pattern_entry.text()
+                if self.sub2_episode_pattern_entry is not None:
+                    self.settings['sub2_episode_pattern'] = self.sub2_episode_pattern_entry.text()
+                # font size
+                if self.font_size_spinbox is not None:
+                    self.settings['font_size'] = self.font_size_spinbox.value()
+                # Update with additional settings if provided
+                if settings:
+                    self.settings.update(settings)
+                
+                # Save to file
                 with open(self.settings_file, 'w', encoding='utf-8') as f:
                     json.dump(self.settings, f, indent=4)
                 
                 self.logger.info("Directory tab settings saved")
-            except Exception as e:
-                self.logger.error(f"Error writing settings to file: {e}")
-        else:
-            self.logger.warning("Settings not available during save_settings call")
+        except Exception as e:
+            self.logger.error(f"Error saving settings: {e}")
 
     def update_ui_from_settings(self):
         """Update UI elements based on loaded settings."""
@@ -1096,6 +1089,9 @@ class DirectoryTab(BaseTab):
             self.sub1_episode_pattern_entry.setText(self.settings.get('sub1_episode_pattern', ''))
         if hasattr(self, 'sub2_episode_pattern_entry'):
             self.sub2_episode_pattern_entry.setText(self.settings.get('sub2_episode_pattern', ''))
+        # font size
+        if hasattr(self, 'font_size_spinbox'):
+            self.font_size_spinbox.setValue(self.settings.get('font_size', 30))
             
         self.logger.debug("UI updated from settings")
 
@@ -1258,8 +1254,10 @@ class DirectoryTab(BaseTab):
     def save_value_to_settings(self, key: str, value):
         """Save a value to the settings."""
         try:
+            print(f"Saving {key} to settings: {value}")
             if hasattr(self, 'settings'):
                 self.settings[key] = value
+                print(f"Settings: {self.settings}")
                 self.save_settings()
         except Exception as e:
             self.logger.error(f"Error saving value to settings: {e}")
@@ -1272,6 +1270,30 @@ class DirectoryTab(BaseTab):
         # Check if filename contains "E" or "S" pattern
         has_e_pattern = 'E' in filename.upper()
         has_s_pattern = 'S' in filename.upper()
+           
+        # Check for various separator patterns (dxd, dxD, dXd, d-D, d_d, d.d, dvd, d v d)
+        separator_patterns = [
+            r'(\d+)[xX](\d+)',     # 1x01, 2X03
+            r'(\d+)[-_. ]+[xX][-_. ]+(\d+)',  # 1 x 01, 2_x_03
+            r'(\d+)[-_. ]+v[-_. ]+(\d+)',     # 1 v 01, 2_v_03
+            r'(\d+)[-_.](\d{2,3})',           # 1.01, 2.03
+            r'(\d+)[-_. ]+[-_. ]+(\d+)',      # 1-01, 2_03, 1 - 01
+            r'(\d+)[vV](\d+)',                # 1v01, 2V03
+            r'[Ee][Pp][-_. ]*(\d+)',           # EP01, ep-01, ep.01
+            r'[Ss]?(\d+)[xXeE](\d+)',         # S01E01, 1x01, 1e01
+        ]
+        
+        for pattern in separator_patterns:
+            match = re.search(pattern, filename)
+            if match:
+                # If pattern has one group, it's just an episode number
+                if len(match.groups()) == 1:
+                    return '01', match.group(1)
+                # If pattern has two groups, it's season and episode
+                elif len(match.groups()) == 2:
+                    season = match.group(1).zfill(2)  # Pad season with leading zero
+                    episode = match.group(2) or '0'  # Remove leading zeros from episode
+                    return season, episode
         
         # Try user-provided pattern first if available
         if primary_pattern:
@@ -1296,7 +1318,7 @@ class DirectoryTab(BaseTab):
         sxxexx_match = re.search(r'[Ss](\d+)[Ee](\d+)', filename)
         if sxxexx_match:
             return sxxexx_match.group(1), sxxexx_match.group(2)
-        
+         
         # For filenames with just a number (like "12"), extract it directly
         simple_number_match = re.search(r'(?:^|\s|_|-|\[)(\d{1,2})(?:\s|$|\]|\[|\()', filename)
         if simple_number_match:
@@ -1329,6 +1351,12 @@ class DirectoryTab(BaseTab):
                 season_num = season_match.group(1) if season_match else default_season
                 return season_num, ep_match.group(1)
         
+        # Check for 1x01 pattern (e.g., 1x01, 2x05, etc.)
+        season_ep_match = re.search(r'(\d+)[xX](\d{1,3})\b', filename)
+        if season_ep_match:
+            # For 1x01 format, first number is season, second is episode
+            return season_ep_match.group(1).zfill(2), season_ep_match.group(2)
+        
         # Last resort: try to find numbers that appear to be episode numbers
         # Check for numbers at the end of the filename
         end_number_match = re.search(r'[_\s.-](\d{1,3})(?:\b|$)', filename)
@@ -1351,8 +1379,8 @@ class DirectoryTab(BaseTab):
         if any_number:
             # Only format as SxxExx if the filename has S or E patterns
             if has_s_pattern or has_e_pattern:
-                return '01', any_number.group(1)
-            return None, any_number.group(1)
+                return '01', end_number_match.group(1)
+            return None, end_number_match.group(1)
 
         return None, None
 

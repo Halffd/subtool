@@ -618,12 +618,12 @@ class BaseTab(QWidget):
         
         self.sub1_font_slider = QSlider(Qt.Orientation.Horizontal)
         self.sub1_font_slider.setMinimum(8)
-        self.sub1_font_slider.setMaximum(48)
+        self.sub1_font_slider.setMaximum(88)
         self.sub1_font_slider.setValue(self.settings.get('sub1_font_size', 16))
         
         self.sub1_font_spinbox = QSpinBox()
         self.sub1_font_spinbox.setMinimum(8)
-        self.sub1_font_spinbox.setMaximum(48)
+        self.sub1_font_spinbox.setMaximum(88)
         self.sub1_font_spinbox.setValue(self.settings.get('sub1_font_size', 16))
         
         # Connect slider and spinbox (these are local connections, not for saving)
