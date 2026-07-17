@@ -684,6 +684,7 @@ def batch_merge_directory(
     auto_detect_episodes: bool = True,
     auto_detect_tracks: bool = False,
     detect_language_content: bool = False,
+    reverse_order: bool = False,
 ):
     """
     Batch merge subtitle files in a directory based on patterns.
@@ -718,6 +719,7 @@ def batch_merge_directory(
         auto_detect_episodes: Auto-detect episode number patterns
         auto_detect_tracks: Auto-detect subtitle tracks from filename patterns
         detect_language_content: Detect subtitle language from file content
+        reverse_order: Reverse subtitle order (sub2 on top, sub1 on bottom)
     """
     try:
         import re
@@ -1029,27 +1031,50 @@ def batch_merge_directory(
             # Normalize color
             normalized_color = validate_color(color)
 
-            # Add first subtitle
-            merger.add(
-                temp_sub1_path,
-                codec=codec,
-                color=normalized_color,
-                size=sub1_size,
-                time_offset=sub1_delay,
-                bold=sub1_bold,
-                preserve_svg=preserve_svg,
-            )
+            if reverse_order:
+                # Add second subtitle first (on top)
+                merger.add(
+                    temp_sub2_path,
+                    codec=codec,
+                    color=WHITE,  # First subtitle is white when reversed
+                    size=sub2_size,
+                    time_offset=sub2_delay,
+                    bold=sub2_bold,
+                    preserve_svg=preserve_svg,
+                )
 
-            # Add second subtitle
-            merger.add(
-                temp_sub2_path,
-                codec=codec,
-                color=WHITE,  # Second subtitle is always white
-                size=sub2_size,
-                time_offset=sub2_delay,
-                bold=sub2_bold,
-                preserve_svg=preserve_svg,
-            )
+                # Add first subtitle second (on bottom)
+                merger.add(
+                    temp_sub1_path,
+                    codec=codec,
+                    color=normalized_color,
+                    size=sub1_size,
+                    time_offset=sub1_delay,
+                    bold=sub1_bold,
+                    preserve_svg=preserve_svg,
+                )
+            else:
+                # Add first subtitle (on top)
+                merger.add(
+                    temp_sub1_path,
+                    codec=codec,
+                    color=normalized_color,
+                    size=sub1_size,
+                    time_offset=sub1_delay,
+                    bold=sub1_bold,
+                    preserve_svg=preserve_svg,
+                )
+
+                # Add second subtitle (on bottom)
+                merger.add(
+                    temp_sub2_path,
+                    codec=codec,
+                    color=WHITE,  # Second subtitle is always white
+                    size=sub2_size,
+                    time_offset=sub2_delay,
+                    bold=sub2_bold,
+                    preserve_svg=preserve_svg,
+                )
 
             # Perform merge
             merger.merge()
@@ -1300,6 +1325,11 @@ Examples:
         help="Detect subtitle language from file content (slower, more accurate)",
     )
     batch_parser.add_argument(
+        "--reverse",
+        action="store_true",
+        help="Reverse subtitle order (sub2 on top, sub1 on bottom)",
+    )
+    batch_parser.add_argument(
         "--sub1-delay",
         type=int,
         default=0,
@@ -1449,6 +1479,7 @@ Examples:
             auto_detect_episodes=not args.no_auto_detect_episodes,
             auto_detect_tracks=args.auto_detect_tracks,
             detect_language_content=args.detect_language_content,
+            reverse_order=args.reverse,
         )
         sys.exit(0 if success else 1)
 
