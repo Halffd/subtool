@@ -13,29 +13,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 def main():
     try:
-        # Import and run the main function from src.main
-        from src.main import main as app_main
-        
-        # Set up QT environment variables if needed
-        if sys.platform.startswith('linux'):
-            # Try to locate the Qt platform plugins
-            potential_plugin_paths = [
-                '/usr/lib/qt/plugins',
-                '/usr/lib/qt6/plugins',
-                '/usr/lib/x86_64-linux-gnu/qt6/plugins',
-                '/usr/local/lib/qt6/plugins',
-                '/usr/lib64/qt6/plugins'
-            ]
-            
-            for path in potential_plugin_paths:
-                if os.path.exists(path):
-                    os.environ['QT_PLUGIN_PATH'] = path
-                    print(f"Set QT_PLUGIN_PATH to {path}")
-                    break
-        
-        # Run the application
-        app_main()
-        
+        # Check if command line arguments are provided (other than the script name)
+        if len(sys.argv) > 1:
+            # If arguments are provided, run CLI interface
+            from src.utils.cli import main as cli_main
+            cli_main()
+        else:
+            # Otherwise, run GUI application
+            from src.main import main as app_main
+
+            # Set up QT environment variables if needed
+            if sys.platform.startswith('linux'):
+                # Try to locate the Qt platform plugins
+                potential_plugin_paths = [
+                    '/usr/lib/qt/plugins',
+                    '/usr/lib/qt6/plugins',
+                    '/usr/lib/x86_64-linux-gnu/qt6/plugins',
+                    '/usr/local/lib/qt6/plugins',
+                    '/usr/lib64/qt6/plugins'
+                ]
+
+                for path in potential_plugin_paths:
+                    if os.path.exists(path):
+                        os.environ['QT_PLUGIN_PATH'] = path
+                        print(f"Set QT_PLUGIN_PATH to {path}")
+                        break
+
+            # Run the application
+            app_main()
+
     except ImportError as e:
         print(f"Error importing modules: {e}")
         print("Make sure you have installed all required dependencies.")
@@ -46,4 +52,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main() 
+    main()
